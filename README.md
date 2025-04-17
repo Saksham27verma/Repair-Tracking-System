@@ -17,8 +17,7 @@ A comprehensive system for managing hearing aid repairs at a dealership in Delhi
 
 - **Frontend**: Next.js 14 with App Router
 - **UI Framework**: Material-UI v5
-- **Database**: Supabase (PostgreSQL)
-- **Authentication**: Clerk
+- **Database & Auth**: Supabase (PostgreSQL + Auth)
 - **Charts**: Recharts
 - **Testing**: Jest + React Testing Library
 - **Additional Features**: reCAPTCHA, TypeScript
@@ -27,7 +26,6 @@ A comprehensive system for managing hearing aid repairs at a dealership in Delhi
 
 - Node.js 18+ and npm
 - Supabase account
-- Clerk account
 - reCAPTCHA API keys
 
 ## Environment Variables
@@ -35,14 +33,6 @@ A comprehensive system for managing hearing aid repairs at a dealership in Delhi
 Create a `.env.local` file in the root directory with the following variables:
 
 ```env
-# Clerk Authentication
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_publishable_key
-CLERK_SECRET_KEY=your_secret_key
-NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
-NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard
-NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
-
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
@@ -68,8 +58,9 @@ RECAPTCHA_SECRET_KEY=your_recaptcha_secret_key
 
 3. Set up your environment variables as described above.
 
-4. Set up your Supabase database:
+4. Set up your Supabase database and authentication:
    - Create a new Supabase project
+   - Configure authentication settings in Supabase dashboard
    - Run the database migrations:
      ```bash
      cd supabase
@@ -77,21 +68,16 @@ RECAPTCHA_SECRET_KEY=your_recaptcha_secret_key
      ```
    - Update your environment variables with the Supabase credentials
 
-5. Set up Clerk authentication:
-   - Create a new Clerk application
-   - Configure the authentication settings
-   - Update your environment variables with the Clerk credentials
-
-6. Set up reCAPTCHA:
+5. Set up reCAPTCHA:
    - Get your reCAPTCHA API keys from Google
    - Update your environment variables with the reCAPTCHA credentials
 
-7. Run the development server:
+6. Run the development server:
    ```bash
    npm run dev
    ```
 
-8. Open [http://localhost:3000](http://localhost:3000) in your browser.
+7. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Testing
 
@@ -202,7 +188,7 @@ src/
 
 ## Security Measures
 
-- Authentication using Clerk
+- Authentication using Supabase Auth
 - Row Level Security in Supabase
 - CAPTCHA verification for public endpoints
 - Environment variables for sensitive data
