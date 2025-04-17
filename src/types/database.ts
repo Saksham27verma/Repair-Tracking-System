@@ -1,9 +1,9 @@
 export enum RepairStatus {
-  PENDING = 'PENDING',
-  IN_PROGRESS = 'IN_PROGRESS',
-  COMPLETED = 'COMPLETED',
-  DELIVERED = 'DELIVERED',
-  CANCELLED = 'CANCELLED'
+  RECEIVED = 'Received',
+  SENT_TO_MANUFACTURER = 'Sent to Manufacturer',
+  RETURNED_FROM_MANUFACTURER = 'Returned from Manufacturer',
+  READY_FOR_PICKUP = 'Ready for Pickup',
+  COMPLETED = 'Completed'
 }
 
 export interface Customer {
