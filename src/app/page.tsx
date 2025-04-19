@@ -25,8 +25,8 @@ export default function HomePage() {
             gap: 3,
           }}
         >
-          <Stack spacing={2} alignItems="center" sx={{ mb: 2 }}>
-            <Box sx={{ width: 200, height: 70, position: 'relative' }}>
+          <Stack spacing={1} alignItems="center" sx={{ mb: 1 , mt: 1 }}>
+            <Box sx={{ width: 300, height: 70, position: 'relative' }}>
               <Image
                 src="/images/logohope.svg"
                 alt="Company Logo"
