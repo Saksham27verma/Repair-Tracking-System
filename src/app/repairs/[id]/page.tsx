@@ -30,7 +30,6 @@ import RefreshButton from '@/app/components/RefreshButton';
 import EstimateApproval from '@/app/components/EstimateApproval';
 import RepairStatusStepper from '@/app/components/RepairStatusStepper';
 import HelpSupportButton from '@/app/components/HelpSupportButton';
-import EmailNotificationButton from './EmailNotificationButton';
 import { Suspense } from 'react';
 
 type RepairRecord = Database['public']['Tables']['repairs']['Row'] & {
@@ -328,7 +327,7 @@ export default async function RepairStatusPage({
                 If you have any questions about your repair, please don't hesitate to contact us:
               </Typography>
               <Grid container spacing={2}>
-                <Grid item xs={12} sm={3}>
+                <Grid item xs={12} sm={4}>
                   <Button
                     variant="outlined"
                     fullWidth
@@ -339,7 +338,7 @@ export default async function RepairStatusPage({
                     Call Us
                   </Button>
                 </Grid>
-                <Grid item xs={12} sm={3}>
+                <Grid item xs={12} sm={4}>
                   <Button
                     variant="outlined"
                     fullWidth
@@ -352,7 +351,7 @@ export default async function RepairStatusPage({
                     WhatsApp
                   </Button>
                 </Grid>
-                <Grid item xs={12} sm={3}>
+                <Grid item xs={12} sm={4}>
                   <Button
                     variant="outlined"
                     fullWidth
@@ -362,9 +361,6 @@ export default async function RepairStatusPage({
                   >
                     Email Us
                   </Button>
-                </Grid>
-                <Grid item xs={12} sm={3}>
-                  <EmailNotificationButton repairId={repair.repair_id} />
                 </Grid>
               </Grid>
             </Paper>
