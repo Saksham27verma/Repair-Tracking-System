@@ -338,6 +338,7 @@ export interface RepairRecord {
   // Customer Information
   patient_name: string;
   phone: string;
+  email?: string;
   company?: CompanyType;
   
   // Product Information
@@ -348,6 +349,9 @@ export interface RepairRecord {
   ear?: Ear;
   mould?: MouldType;
   purpose: string;
+  
+  // Notification Preferences
+  notification_preference?: 'email' | 'sms' | 'both';
   
   // Dates
   date_of_receipt: string;
@@ -374,6 +378,7 @@ export interface Customer {
   id: string;
   name: string;
   phone: string;
+  email?: string;
   company?: string;
   created_at: string;
   updated_at: string;

@@ -1,9 +1,21 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getFreshSupabaseClient } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   try {
-    const { phone } = await request.json();
+    // Parse request body
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      console.error('Error parsing request body:', parseError);
+      return NextResponse.json(
+        { message: 'Invalid request body' },
+        { status: 400 }
+      );
+    }
+
+    const { phone } = body;
 
     if (!phone) {
       return NextResponse.json(
@@ -12,25 +24,37 @@ export async function POST(request: Request) {
       );
     }
 
-    // Query repair record
-    const { data: repair, error } = await supabase
-      .from('repairs')
-      .select('*')
-      .eq('phone', phone)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    // Use fresh client that bypasses cache
+    const supabase = getFreshSupabaseClient();
 
-    if (error || !repair) {
+    // Query repair record
+    try {
+      const { data: repair, error } = await supabase
+        .from('repairs')
+        .select('repair_id')
+        .eq('phone', phone)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error || !repair) {
+        console.error('No repair found for phone:', phone);
+        return NextResponse.json(
+          { message: 'No repair found with the provided phone number' },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({ repairId: repair.repair_id });
+    } catch (dbError) {
+      console.error('Database error:', dbError);
       return NextResponse.json(
-        { message: 'No repair found with the provided phone number' },
-        { status: 404 }
+        { message: 'Error querying the database' },
+        { status: 500 }
       );
     }
-
-    return NextResponse.json({ repairId: repair.repair_id });
   } catch (error) {
-    console.error('Error verifying repair:', error);
+    console.error('Unhandled error in verify route:', error);
     return NextResponse.json(
       { message: 'Internal server error' },
       { status: 500 }

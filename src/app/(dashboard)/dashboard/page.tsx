@@ -3,6 +3,10 @@ import { type Database } from '@/app/types/supabase';
 import DashboardCharts from './_components/DashboardCharts';
 import { createServerClient } from '@/lib/supabase/server';
 import { RepairStatus } from '@/app/types/database';
+import PageHeader from '@/app/components/PageHeader';
+import { getFreshSupabaseClient } from '@/lib/supabase';
+import EmailPopupHandler from './EmailPopupHandler';
+import { Suspense } from 'react';
 
 interface StatusCount {
   status: RepairStatus | string;
@@ -66,10 +70,22 @@ async function getDashboardStats() {
 }
 
 export default async function DashboardPage() {
-  try {
-    const stats = await getDashboardStats();
-    return <DashboardCharts {...stats} />;
-  } catch (error) {
-    return <div>Error loading dashboard statistics</div>;
-  }
+  const { statusCounts, dailyCounts } = await getDashboardStats();
+
+  return (
+    <div>
+      {/* Client component to handle email popup wrapped in Suspense */}
+      <Suspense fallback={null}>
+        <EmailPopupHandler />
+      </Suspense>
+      
+      <PageHeader 
+        title="Dashboard" 
+      />
+      <DashboardCharts 
+        statusCounts={statusCounts}
+        dailyCounts={dailyCounts}
+      />
+    </div>
+  );
 } 

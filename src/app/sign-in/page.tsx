@@ -9,7 +9,13 @@ import {
   Button,
   Typography,
   Alert,
+  IconButton,
+  InputAdornment,
 } from '@mui/material';
+import { 
+  Visibility as VisibilityIcon, 
+  VisibilityOff as VisibilityOffIcon 
+} from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 
 export default function SignInPage() {
@@ -21,6 +27,15 @@ export default function SignInPage() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleClickShowPassword = () => {
+    setShowPassword(!showPassword);
+  };
+
+  const handleMouseDownPassword = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,7 +45,8 @@ export default function SignInPage() {
     try {
       const success = await login(formData.username, formData.password);
       if (success) {
-        router.push('/dashboard');
+        // Redirect to dashboard with a URL parameter instead of using session storage
+        router.push('/dashboard?showEmailPopup=true');
       } else {
         setError('Invalid username or password');
       }
@@ -97,10 +113,24 @@ export default function SignInPage() {
             fullWidth
             label="Password"
             name="password"
-            type="password"
+            type={showPassword ? "text" : "password"}
             autoComplete="current-password"
             value={formData.password}
             onChange={handleChange}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label="toggle password visibility"
+                    onClick={handleClickShowPassword}
+                    onMouseDown={handleMouseDownPassword}
+                    edge="end"
+                  >
+                    {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                  </IconButton>
+                </InputAdornment>
+              )
+            }}
           />
 
           <Button

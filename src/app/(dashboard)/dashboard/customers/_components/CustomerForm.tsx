@@ -31,6 +31,7 @@ export default function CustomerForm({ customer, mode = 'create' }: CustomerForm
   const [formData, setFormData] = useState<CustomerInsert>({
     name: customer?.name || '',
     phone: customer?.phone || '',
+    email: customer?.email || '',
     company: customer?.company || undefined,
   });
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +60,7 @@ export default function CustomerForm({ customer, mode = 'create' }: CustomerForm
       const dataToSubmit: CustomerInsert = {
         name: formData.name,
         phone: formData.phone,
+        email: formData.email || undefined,
         company: formData.company || undefined,
       };
 
@@ -154,6 +156,15 @@ export default function CustomerForm({ customer, mode = 'create' }: CustomerForm
           onChange={handleChange}
           error={!formData.phone}
           helperText={!formData.phone && 'Phone number is required'}
+        />
+        
+        <TextField
+          fullWidth
+          label="Email"
+          name="email"
+          type="email"
+          value={formData.email || ''}
+          onChange={handleChange}
         />
         
         <TextField

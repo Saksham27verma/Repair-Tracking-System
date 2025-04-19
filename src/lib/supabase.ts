@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { type Database } from '@/app/types/supabase'
+import { nanoid } from 'nanoid'
 
 // Check if environment variables are defined
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
@@ -11,29 +12,39 @@ if (typeof window === 'undefined' && (!supabaseUrl || !supabaseAnonKey)) {
   console.warn('Supabase environment variables are not set. Auth functionality will not work.')
 }
 
-// Create a Supabase client for the browser
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+// Create a client with the supabase URL and anon key
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+)
 
-// Get a fresh Supabase client (bypassing any caching)
-export function getFreshSupabaseClient() {
-  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: false,
-    },
-  })
+// Create a service role client for admin operations
+export function getAdminSupabaseClient() {
+  const supabaseServiceClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  )
+  return supabaseServiceClient
 }
 
-// Same but with the service role key for admin operations
-export function getAdminSupabaseClient() {
-  if (typeof window === 'undefined' && !supabaseServiceKey) {
-    console.warn('SUPABASE_SERVICE_ROLE_KEY is not set. Admin operations will not work.')
-  }
-  
-  return createClient<Database>(supabaseUrl, supabaseServiceKey, {
-    auth: {
-      persistSession: false,
-    },
-  })
+// Function to get a fresh client for direct API calls
+export function getFreshSupabaseClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  )
 }
 
 // This function can be used to refresh the schema cache for a specific table

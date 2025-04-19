@@ -57,14 +57,36 @@ export default function RepairTrackingForm() {
         body: JSON.stringify({ phone: formData.phone }),
       });
 
+      // Check if the response is OK before trying to parse JSON
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to verify repair status');
+        let errorMessage = 'Failed to verify repair status';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (jsonError) {
+          console.error('Error parsing error response:', jsonError);
+        }
+        throw new Error(errorMessage);
       }
 
-      // Handle successful verification and redirect to status page
-      const data = await response.json();
-      window.location.href = `/repairs/${data.repairId}`;
+      // Parse the successful response
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error('Error parsing successful response:', jsonError);
+        throw new Error('Invalid response format from server');
+      }
+
+      if (!data || !data.repairId) {
+        throw new Error('Invalid response data from server');
+      }
+
+      // If we got here, we have a valid repairId
+      console.log('Successfully verified repair:', data.repairId);
+      
+      // Instead of using session storage, add a URL parameter
+      window.location.href = `/repairs/${data.repairId}?showNotification=true`;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {

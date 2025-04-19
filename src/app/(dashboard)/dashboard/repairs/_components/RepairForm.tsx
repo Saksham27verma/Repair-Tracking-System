@@ -83,6 +83,7 @@ interface FormState {
   status: RepairStatus;
   patient_name: string;
   phone: string;
+  email: string;
   company: CompanyType | '';
   model_item_name: string;
   serial_no: string;
@@ -115,6 +116,7 @@ const initialFormData: FormState = {
   status: 'Received',
   patient_name: '',
   phone: '',
+  email: '',
   company: '',
   model_item_name: '',
   serial_no: '',
@@ -135,6 +137,17 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
   const router = useRouter();
   const { showAlert } = useAlert();
   
+  // Get saved email from localStorage for new repairs
+  const [savedEmail, setSavedEmail] = useState<string>('');
+  
+  // Check for saved email in localStorage on component mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && mode === 'create') {
+      const email = localStorage.getItem('userEmail') || '';
+      setSavedEmail(email);
+    }
+  }, [mode]);
+  
   // Initialize form state with proper types
   const [formData, setFormData] = useState<FormState>(() => {
     if (repair) {
@@ -146,6 +159,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
         status: repair.status,
         patient_name: repair.patient_name,
         phone: repair.phone,
+        email: repair.email || '',
         company: repair.company || '',
         model_item_name: repair.model_item_name,
         serial_no: repair.serial_no,
@@ -153,10 +167,10 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
         warranty: repair.warranty,
         purpose: repair.purpose,
         // Use repair_estimate_by_company as the primary estimate, fallback to estimate_by_us if needed
-        repair_estimate: repair.repair_estimate_by_company || repair.estimate_by_us,
-        customer_paid: repair.customer_paid,
-        payment_mode: repair.payment_mode,
-        programming_done: repair.programming_done,
+        repair_estimate: repair.repair_estimate_by_company || repair.estimate_by_us || null,
+        customer_paid: repair.customer_paid ?? null,
+        payment_mode: repair.payment_mode || null,
+        programming_done: repair.programming_done !== undefined ? repair.programming_done : false,
         remarks: repair.remarks || '',
         estimate_status: (repair.estimate_status as EstimateStatus) || 'Not Required',
         date_of_receipt: repair.date_of_receipt,
@@ -172,13 +186,15 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
       // New repair - use defaults + generate ID
       return { 
         ...initialFormData, 
-        repair_id: generateRepairId() 
+        repair_id: generateRepairId(),
+        email: savedEmail // Use saved email from localStorage if available
       };
     }
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [statusChanged, setStatusChanged] = useState<{ repairId: string; oldStatus: RepairStatus; newStatus: RepairStatus } | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -191,6 +207,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
   const handleStatusChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newStatus = e.target.value as RepairStatus;
     const now = new Date().toISOString();
+    const oldStatus = formData.status;
     
     setFormData((prev) => ({
       ...prev,
@@ -205,6 +222,15 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
         date_out_to_customer: now,
       }),
     }));
+
+    // Track status change for notification later
+    if (repair?.id && oldStatus !== newStatus) {
+      setStatusChanged({
+        repairId: repair.id,
+        oldStatus,
+        newStatus
+      });
+    }
   };
 
   const handleEstimateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -247,6 +273,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
       const customerData = {
         name: formData.patient_name,
         phone: formData.phone,
+        email: formData.email,
         company: formData.company || null
       };
 
@@ -260,7 +287,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
       // Check if customer exists
       const { data: existingCustomer, error: searchError } = await supabase
         .from('customers')
-        .select('id, name, phone')
+        .select('id, name, phone, email')
         .eq('phone', formData.phone)
         .maybeSingle();
 
@@ -323,6 +350,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
         customer_id: customerId,
         patient_name: formData.patient_name,
         phone: formData.phone,
+        email: formData.email,
         company: formData.company || null,
         model_item_name: formData.model_item_name,
         serial_no: formData.serial_no,
@@ -399,6 +427,21 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
         }
         
         showAlert('Repair updated successfully', 'success');
+      }
+
+      // If status was changed, send notification
+      if (statusChanged) {
+        try {
+          await fetch('/api/status-change-notification', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(statusChanged),
+          });
+        } catch (notificationError) {
+          console.error('Failed to send status change notification, but repair was updated:', notificationError);
+        }
       }
 
       router.push('/dashboard/repairs');
@@ -516,6 +559,15 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                   label="Phone Number"
                   name="phone"
                   value={formData.phone}
+                  onChange={handleChange}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Email"
+                  name="email"
+                  value={formData.email}
                   onChange={handleChange}
                 />
               </Grid>

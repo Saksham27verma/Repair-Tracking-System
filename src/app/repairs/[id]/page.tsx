@@ -30,6 +30,8 @@ import RefreshButton from '@/app/components/RefreshButton';
 import EstimateApproval from '@/app/components/EstimateApproval';
 import RepairStatusStepper from '@/app/components/RepairStatusStepper';
 import HelpSupportButton from '@/app/components/HelpSupportButton';
+import EmailNotificationButton from './EmailNotificationButton';
+import { Suspense } from 'react';
 
 type RepairRecord = Database['public']['Tables']['repairs']['Row'] & {
   estimate_status?: EstimateStatus;
@@ -48,6 +50,8 @@ async function getRepairDetails(id: string) {
   // Use fresh client that bypasses cache
   const supabase = getFreshSupabaseClient();
   
+  console.log('Fetching repair details for ID:', id);
+  
   // Disable server-side caching for this function
   const { data: repair, error } = await supabase
     .from('repairs')
@@ -55,10 +59,17 @@ async function getRepairDetails(id: string) {
     .eq('repair_id', id)
     .single();
 
-  if (error || !repair) {
+  if (error) {
+    console.error('Error fetching repair details:', error);
     return null;
   }
 
+  if (!repair) {
+    console.error('No repair found with ID:', id);
+    return null;
+  }
+
+  console.log('Repair found:', repair);
   return repair as RepairRecord;
 }
 
@@ -317,7 +328,7 @@ export default async function RepairStatusPage({
                 If you have any questions about your repair, please don't hesitate to contact us:
               </Typography>
               <Grid container spacing={2}>
-                <Grid item xs={12} sm={4}>
+                <Grid item xs={12} sm={3}>
                   <Button
                     variant="outlined"
                     fullWidth
@@ -328,7 +339,7 @@ export default async function RepairStatusPage({
                     Call Us
                   </Button>
                 </Grid>
-                <Grid item xs={12} sm={4}>
+                <Grid item xs={12} sm={3}>
                   <Button
                     variant="outlined"
                     fullWidth
@@ -341,7 +352,7 @@ export default async function RepairStatusPage({
                     WhatsApp
                   </Button>
                 </Grid>
-                <Grid item xs={12} sm={4}>
+                <Grid item xs={12} sm={3}>
                   <Button
                     variant="outlined"
                     fullWidth
@@ -351,6 +362,9 @@ export default async function RepairStatusPage({
                   >
                     Email Us
                   </Button>
+                </Grid>
+                <Grid item xs={12} sm={3}>
+                  <EmailNotificationButton repairId={repair.repair_id} />
                 </Grid>
               </Grid>
             </Paper>
