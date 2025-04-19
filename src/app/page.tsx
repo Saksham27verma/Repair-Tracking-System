@@ -28,7 +28,7 @@ export default function HomePage() {
           <Stack spacing={2} alignItems="center" sx={{ mb: 2 }}>
             <Box sx={{ width: 200, height: 70, position: 'relative' }}>
               <Image
-                src="/images/hopelogo.svg"
+                src="/images/logohope.svg"
                 alt="Company Logo"
                 fill
                 style={{ objectFit: 'contain' }}
