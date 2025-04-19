@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
 import { type Database } from '@/app/types/supabase'
-import 'server-only'
 
 // Check if environment variables are defined
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
@@ -8,7 +7,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 
 // Validate that we have the required environment variables
-if (!supabaseUrl || !supabaseAnonKey) {
+if (typeof window === 'undefined' && (!supabaseUrl || !supabaseAnonKey)) {
   console.warn('Supabase environment variables are not set. Auth functionality will not work.')
 }
 
@@ -26,7 +25,7 @@ export function getFreshSupabaseClient() {
 
 // Same but with the service role key for admin operations
 export function getAdminSupabaseClient() {
-  if (!supabaseServiceKey) {
+  if (typeof window === 'undefined' && !supabaseServiceKey) {
     console.warn('SUPABASE_SERVICE_ROLE_KEY is not set. Admin operations will not work.')
   }
   
