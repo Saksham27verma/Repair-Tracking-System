@@ -29,6 +29,7 @@ import { Database } from '@/app/types/supabase';
 import RefreshButton from '@/app/components/RefreshButton';
 import EstimateApproval from '@/app/components/EstimateApproval';
 import RepairStatusStepper from '@/app/components/RepairStatusStepper';
+import HelpSupportButton from '@/app/components/HelpSupportButton';
 
 type RepairRecord = Database['public']['Tables']['repairs']['Row'] & {
   estimate_status?: EstimateStatus;
@@ -356,6 +357,9 @@ export default async function RepairStatusPage({
           </Grid>
         </Grid>
       </Paper>
+      
+      {/* Help and Support Button */}
+      <HelpSupportButton />
     </Container>
   );
 } 

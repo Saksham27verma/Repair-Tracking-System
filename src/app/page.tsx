@@ -2,6 +2,7 @@ import { Box, Container, Typography, Paper, Button, Stack } from '@mui/material'
 import Link from 'next/link';
 import Image from 'next/image';
 import RepairTrackingForm from './components/RepairTrackingForm';
+import HelpSupportButton from './components/HelpSupportButton';
 
 export default function HomePage() {
   return (
@@ -103,6 +104,9 @@ export default function HomePage() {
           </Box>
         </Box>
       </Container>
+      
+      {/* Help and Support Button */}
+      <HelpSupportButton />
     </Box>
   );
 } 
