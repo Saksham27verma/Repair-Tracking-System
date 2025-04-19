@@ -499,61 +499,73 @@ function RepairsContent() {
         sx={{ 
           height: { xs: 'calc(100vh - 300px)', md: 'calc(100vh - 250px)' }, 
           width: '100%',
-          '.MuiDataGrid-root': {
-            // Enable horizontal scrolling
-            overflowX: 'auto',
-            // Ensure proper width for all screens
+          maxWidth: '100vw',
+          // These styles ensure the container itself allows scrolling
+          overflow: 'hidden',
+          '& .MuiDataGrid-root': {
+            // Make the DataGrid scrollable
+            overflow: 'visible',
             width: '100%',
           },
-          // Make sure the container allows scrolling
-          overflow: 'auto'
         }}
       >
-        <DataGrid
-          rows={repairs}
-          columns={columns}
-          loading={loading}
-          components={{
-            Toolbar: GridToolbar,
-          }}
-          initialState={{
-            pagination: {
-              paginationModel: { pageSize: 25, page: 0 },
-            },
-            sorting: {
-              sortModel: [{ field: 'date_of_receipt', sort: 'desc' }],
-            },
-          }}
-          pageSizeOptions={[10, 25, 50, 100]}
-          disableRowSelectionOnClick
-          getRowId={(row) => row.id}
-          sx={{
-            // Add these styles for better mobile experience
-            '& .MuiDataGrid-cell': {
-              overflow: 'visible',
-              whiteSpace: 'normal',
-              minWidth: '100px',
-            },
-            '& .MuiDataGrid-columnHeader': {
-              minWidth: '100px',
-              whiteSpace: 'normal',
-              lineHeight: '1.2',
-            },
-            // Ensure scrolling works properly on mobile
-            '& .MuiDataGrid-virtualScroller': {
-              overflowX: 'auto',
-            },
-            // Improve scrollbar visibility on mobile
-            '& ::-webkit-scrollbar': {
-              height: '8px',
-              width: '8px',
-            },
-            '& ::-webkit-scrollbar-thumb': {
-              backgroundColor: '#bdbdbd',
-              borderRadius: '4px',
-            },
-          }}
-        />
+        {/* Add a scrollable wrapper div that ensures horizontal scrolling works on all devices */}
+        <div style={{ 
+          width: '100%', 
+          height: '100%', 
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          WebkitOverflowScrolling: 'touch', // For improved scrolling on iOS
+        }}>
+          <div style={{ 
+            minWidth: '1000px', // Set minimum width to ensure horizontal scrolling is activated
+            height: '100%' 
+          }}>
+            <DataGrid
+              rows={repairs}
+              columns={columns}
+              loading={loading}
+              components={{
+                Toolbar: GridToolbar,
+              }}
+              initialState={{
+                pagination: {
+                  paginationModel: { pageSize: 25, page: 0 },
+                },
+                sorting: {
+                  sortModel: [{ field: 'date_of_receipt', sort: 'desc' }],
+                },
+              }}
+              pageSizeOptions={[10, 25, 50, 100]}
+              disableRowSelectionOnClick
+              getRowId={(row) => row.id}
+              sx={{
+                // Styles for the DataGrid
+                width: '100%',
+                height: '100%',
+                '& .MuiDataGrid-cell': {
+                  overflow: 'visible',
+                  whiteSpace: 'normal',
+                  minWidth: '100px',
+                  textOverflow: 'ellipsis',
+                },
+                '& .MuiDataGrid-columnHeader': {
+                  minWidth: '100px',
+                  whiteSpace: 'normal',
+                  lineHeight: '1.2',
+                },
+                '& ::-webkit-scrollbar': {
+                  height: '8px',
+                  width: '8px',
+                },
+                '& ::-webkit-scrollbar-thumb': {
+                  backgroundColor: '#bdbdbd',
+                  borderRadius: '4px',
+                },
+              }}
+            />
+          </div>
+        </div>
       </Box>
     </Box>
   );

@@ -161,7 +161,21 @@ export default async function RepairStatusPage({
                   <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
                     Phone
                   </Typography>
-                  <Typography variant="body1">{repair.phone}</Typography>
+                  <Box component="a" 
+                    href={`tel:${repair.phone}`}
+                    sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center',
+                      color: 'inherit',
+                      textDecoration: 'none'
+                    }}
+                  >
+                    <Typography variant="body1">{repair.phone}</Typography>
+                    <PhoneIcon 
+                      fontSize="small" 
+                      sx={{ ml: 1, color: 'primary.main', display: { xs: 'inline-flex', md: 'none' } }} 
+                    />
+                  </Box>
                 </ListItem>
                 {repair.company && (
                   <ListItem>
