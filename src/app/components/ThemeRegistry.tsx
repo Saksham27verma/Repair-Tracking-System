@@ -2,6 +2,20 @@
 
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import { gridClasses } from '@mui/x-data-grid';
+
+// Extend the theme to include custom components
+declare module '@mui/material/styles' {
+  interface Components {
+    MuiDataGrid?: {
+      styleOverrides?: {
+        root?: any;
+        columnHeader?: any;
+        row?: any;
+      };
+    };
+  }
+}
 
 const theme = createTheme({
   palette: {

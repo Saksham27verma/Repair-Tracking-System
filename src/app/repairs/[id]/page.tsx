@@ -4,9 +4,6 @@ import {
   Paper,
   Typography,
   Box,
-  Stepper,
-  Step,
-  StepLabel,
   Grid,
   Divider,
   Button,
@@ -18,17 +15,25 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
+  Chip,
 } from '@mui/material';
 import {
   Phone as PhoneIcon,
   Email as EmailIcon,
   WhatsApp as WhatsAppIcon,
+  AttachMoney as MoneyIcon,
 } from '@mui/icons-material';
-import { supabase } from '@/lib/supabase';
-import { RepairStatus } from '@/app/types/database';
+import { getFreshSupabaseClient } from '@/lib/supabase';
+import { RepairStatus, EstimateStatus } from '@/app/types/database';
 import { Database } from '@/app/types/supabase';
+import RefreshButton from '@/app/components/RefreshButton';
+import EstimateApproval from '@/app/components/EstimateApproval';
+import RepairStatusStepper from '@/app/components/RepairStatusStepper';
 
-type RepairRecord = Database['public']['Tables']['repairs']['Row'];
+type RepairRecord = Database['public']['Tables']['repairs']['Row'] & {
+  estimate_status?: EstimateStatus;
+  estimate_approval_date?: string;
+};
 
 const REPAIR_STEPS: RepairStatus[] = [
   'Received',
@@ -39,6 +44,10 @@ const REPAIR_STEPS: RepairStatus[] = [
 ];
 
 async function getRepairDetails(id: string) {
+  // Use fresh client that bypasses cache
+  const supabase = getFreshSupabaseClient();
+  
+  // Disable server-side caching for this function
   const { data: repair, error } = await supabase
     .from('repairs')
     .select('*')
@@ -52,6 +61,10 @@ async function getRepairDetails(id: string) {
   return repair as RepairRecord;
 }
 
+// Disable page caching to ensure fresh data on each request
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function RepairStatusPage({
   params,
 }: {
@@ -64,23 +77,64 @@ export default async function RepairStatusPage({
   }
 
   const currentStep = REPAIR_STEPS.indexOf(repair.status);
+  const estimateStatus = repair.estimate_status || 'Not Required';
+  const hasEstimate = repair.repair_estimate_by_company && repair.repair_estimate_by_company > 0;
 
   return (
     <Container maxWidth="lg" sx={{ py: 8 }}>
       <Paper elevation={3} sx={{ p: 4, borderRadius: 2 }}>
-        <Typography variant="h4" gutterBottom>
-          Repair Status
-        </Typography>
-
-        <Box sx={{ mb: 6 }}>
-          <Stepper activeStep={currentStep} alternativeLabel>
-            {REPAIR_STEPS.map((label) => (
-              <Step key={label}>
-                <StepLabel>{label}</StepLabel>
-              </Step>
-            ))}
-          </Stepper>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h4" gutterBottom>
+            Repair Status
+          </Typography>
+          <RefreshButton variant="outlined" size="small" />
         </Box>
+
+        {/* Show estimate approval UI if there's a pending estimate */}
+        {hasEstimate && estimateStatus === 'Pending' && repair.status === 'Sent to Manufacturer' && (
+          <EstimateApproval 
+            repairId={repair.repair_id} 
+            estimate={repair.repair_estimate_by_company || 0} 
+            status={estimateStatus}
+          />
+        )}
+
+        {/* Show estimate status if it's been responded to */}
+        {hasEstimate && (estimateStatus === 'Approved' || estimateStatus === 'Declined') && (
+          <Paper 
+            elevation={1} 
+            sx={{ 
+              p: 2, 
+              mb: 4, 
+              backgroundColor: estimateStatus === 'Approved' ? '#e8f5e9' : '#ffebee',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2
+            }}
+          >
+            <MoneyIcon color={estimateStatus === 'Approved' ? 'success' : 'error'} />
+            <Box>
+              <Typography variant="body1" fontWeight="medium">
+                {estimateStatus === 'Approved' 
+                  ? 'You approved the repair estimate.' 
+                  : estimateStatus === 'Declined' && repair.status === 'Sent to Manufacturer'
+                    ? 'You declined the repair estimate. We will notify you when your device is returned from the manufacturer.'
+                    : 'You declined the repair estimate. Your repair request has been cancelled.'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Estimate: ₹{repair.repair_estimate_by_company}
+              </Typography>
+            </Box>
+          </Paper>
+        )}
+
+        {/* Using the new RepairStatusStepper component */}
+        <RepairStatusStepper
+          currentStatus={repair.status}
+          size="large"
+          withTooltips={true}
+          estimateStatus={estimateStatus}
+        />
 
         <Grid container spacing={4}>
           {/* Patient Information */}
@@ -184,6 +238,52 @@ export default async function RepairStatusPage({
               </List>
             </Paper>
           </Grid>
+
+          {/* Financial Information - Only show if there's a cost */}
+          {(hasEstimate || repair.customer_paid) && (
+            <Grid item xs={12}>
+              <Paper elevation={2} sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom color="primary">
+                  Financial Details
+                </Typography>
+                <List>
+                  {hasEstimate && (
+                    <ListItem>
+                      <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
+                        Repair Estimate
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body1">
+                          ₹{repair.repair_estimate_by_company}
+                        </Typography>
+                        {estimateStatus !== 'Not Required' && (
+                          <Chip 
+                            label={estimateStatus} 
+                            size="small"
+                            color={
+                              estimateStatus === 'Approved' ? 'success' :
+                              estimateStatus === 'Declined' ? 'error' :
+                              'warning'
+                            }
+                          />
+                        )}
+                      </Box>
+                    </ListItem>
+                  )}
+                  {repair.customer_paid && repair.customer_paid > 0 && (
+                    <ListItem>
+                      <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
+                        Amount Paid
+                      </Typography>
+                      <Typography variant="body1">
+                        ₹{repair.customer_paid}
+                      </Typography>
+                    </ListItem>
+                  )}
+                </List>
+              </Paper>
+            </Grid>
+          )}
 
           {/* Contact Section */}
           <Grid item xs={12}>

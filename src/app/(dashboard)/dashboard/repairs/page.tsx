@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -12,11 +12,28 @@ import {
   Grid,
   InputAdornment,
   IconButton,
+  Chip,
+  Paper,
+  Card,
+  CardContent,
+  Select,
+  FormControl,
+  InputLabel,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Divider,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Search as SearchIcon,
   Clear as ClearIcon,
+  DateRange as DateRangeIcon,
+  Refresh as RefreshIcon,
+  FilterAlt as FilterIcon,
+  CalendarToday as CalendarIcon,
 } from '@mui/icons-material';
 import {
   DataGrid,
@@ -24,9 +41,10 @@ import {
   GridToolbar,
   GridValueGetterParams,
 } from '@mui/x-data-grid';
-import { supabase } from '@/lib/supabase';
+import { supabase, getFreshSupabaseClient } from '@/lib/supabase';
 import { RepairStatus } from '@/types/database';
-import { format } from 'date-fns';
+import PageHeader from '@/app/components/PageHeader';
+import LoadingSpinner from '@/app/components/LoadingSpinner';
 
 const columns: GridColDef[] = [
   {
@@ -71,6 +89,34 @@ const columns: GridColDef[] = [
     },
   },
   {
+    field: 'estimate_status',
+    headerName: 'Estimate Status',
+    width: 150,
+    renderCell: (params) => {
+      if (!params.value || params.value === 'Not Required') return null;
+      
+      const statusColors: Record<string, string> = {
+        'Pending': '#ff9800',
+        'Approved': '#4caf50',
+        'Declined': '#f44336',
+      };
+      
+      const color = statusColors[params.value as string] || '#757575';
+      
+      return (
+        <Chip
+          label={params.value}
+          size="small"
+          sx={{
+            backgroundColor: color + '20',
+            color: color,
+            fontWeight: 500,
+          }}
+        />
+      );
+    },
+  },
+  {
     field: 'date_of_receipt',
     headerName: 'Received Date',
     width: 150,
@@ -87,24 +133,34 @@ const columns: GridColDef[] = [
     headerName: 'Amount Paid',
     width: 130,
     valueFormatter: (params) =>
-      params.value ? `₹${params.value.toFixed(2)}` : '-',
+      params.value ? `₹${params.value}` : '-',
   },
 ];
 
-export default function RepairsPage() {
+function RepairsContent() {
   const searchParams = useSearchParams();
   const statusParam = searchParams.get('status');
   const dateParam = searchParams.get('date');
+  const startDateParam = searchParams.get('startDate');
+  const endDateParam = searchParams.get('endDate');
   
   const [repairs, setRepairs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(statusParam || 'all');
   const [dateFilter, setDateFilter] = useState<string>(dateParam || '');
+  const [startDateFilter, setStartDateFilter] = useState<string>(startDateParam || '');
+  const [endDateFilter, setEndDateFilter] = useState<string>(endDateParam || '');
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
+  const [showDateRange, setShowDateRange] = useState(false);
 
   const fetchRepairs = async () => {
-    let query = supabase.from('repairs').select('*');
+    console.log('🔄 Fetching repairs with filters...');
+    
+    // Use a fresh client to avoid cache issues
+    const freshClient = getFreshSupabaseClient();
+    
+    let query = freshClient.from('repairs').select('*');
 
     if (searchQuery) {
       query = query.or(
@@ -116,11 +172,26 @@ export default function RepairsPage() {
       query = query.eq('status', statusFilter);
     }
 
-    if (dateFilter) {
+    // Single date filter
+    if (dateFilter && !showDateRange) {
       // Filter by date - using the created_at column
       // We need to filter for the entire day, so we add time boundaries
       const startDate = new Date(dateFilter);
       const endDate = new Date(dateFilter);
+      endDate.setHours(23, 59, 59, 999);
+      
+      query = query.gte('created_at', startDate.toISOString())
+                   .lte('created_at', endDate.toISOString());
+    }
+
+    // Date range filter
+    if (showDateRange && startDateFilter && endDateFilter) {
+      const startDate = new Date(startDateFilter);
+      // Set to beginning of day
+      startDate.setHours(0, 0, 0, 0);
+      
+      const endDate = new Date(endDateFilter);
+      // Set to end of day
       endDate.setHours(23, 59, 59, 999);
       
       query = query.gte('created_at', startDate.toISOString())
@@ -132,8 +203,22 @@ export default function RepairsPage() {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching repairs:', error);
+      console.error('❌ Error fetching repairs:', error);
       return;
+    }
+
+    if (data) {
+      console.log(`✅ Fetched ${data.length} repairs`);
+      // Log some info about the first few records to help debugging
+      if (data.length > 0) {
+        const firstRecord = data[0];
+        console.log('📊 First record:', {
+          id: firstRecord.id,
+          status: firstRecord.status,
+          estimate_status: firstRecord.estimate_status,
+          estimate_approval_date: firstRecord.estimate_approval_date,
+        });
+      }
     }
 
     setRepairs(data || []);
@@ -143,7 +228,21 @@ export default function RepairsPage() {
   const clearFilters = () => {
     setStatusFilter('all');
     setDateFilter('');
+    setStartDateFilter('');
+    setEndDateFilter('');
     setSearchQuery('');
+  };
+
+  const toggleDateRangeFilter = () => {
+    setShowDateRange(!showDateRange);
+    if (showDateRange) {
+      // Switching to single date, clear range fields
+      setStartDateFilter('');
+      setEndDateFilter('');
+    } else {
+      // Switching to range, clear single date field
+      setDateFilter('');
+    }
   };
 
   // Initialize the filters based on URL params
@@ -153,24 +252,41 @@ export default function RepairsPage() {
     }
     if (dateParam) {
       setDateFilter(dateParam);
+      setShowDateRange(false);
     }
-  }, [statusParam, dateParam]);
+    if (startDateParam && endDateParam) {
+      setStartDateFilter(startDateParam);
+      setEndDateFilter(endDateParam);
+      setShowDateRange(true);
+    }
+  }, [statusParam, dateParam, startDateParam, endDateParam]);
 
   // Check if any filters are active
   useEffect(() => {
-    setHasActiveFilters(statusFilter !== 'all' || dateFilter !== '' || searchQuery !== '');
-  }, [statusFilter, dateFilter, searchQuery]);
+    setHasActiveFilters(
+      statusFilter !== 'all' || 
+      dateFilter !== '' || 
+      startDateFilter !== '' || 
+      endDateFilter !== '' || 
+      searchQuery !== ''
+    );
+  }, [statusFilter, dateFilter, startDateFilter, endDateFilter, searchQuery]);
 
   // Fetch repairs on mount and when filters change
   useEffect(() => {
     fetchRepairs();
-  }, [searchQuery, statusFilter, dateFilter]);
+  }, [searchQuery, statusFilter, dateFilter, startDateFilter, endDateFilter, showDateRange]);
 
   // Format date for display
   const formatDisplayDate = (dateString: string) => {
     if (!dateString) return '';
     try {
-      return format(new Date(dateString), 'MMMM d, yyyy');
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
     } catch (error) {
       return dateString;
     }
@@ -188,23 +304,37 @@ export default function RepairsPage() {
       >
         <Typography variant="h4">
           Repairs
-          {dateFilter && (
+          {dateFilter && !showDateRange && (
             <Typography component="span" variant="subtitle1" sx={{ ml: 1, fontWeight: 'normal', color: 'text.secondary' }}>
               from {formatDisplayDate(dateFilter)}
             </Typography>
           )}
+          {showDateRange && startDateFilter && endDateFilter && (
+            <Typography component="span" variant="subtitle1" sx={{ ml: 1, fontWeight: 'normal', color: 'text.secondary' }}>
+              from {formatDisplayDate(startDateFilter)} to {formatDisplayDate(endDateFilter)}
+            </Typography>
+          )}
         </Typography>
-        <Button
-          component={Link}
-          href="/dashboard/repairs/new"
-          variant="contained"
-          startIcon={<AddIcon />}
-        >
-          New Repair
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button 
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={() => fetchRepairs()}
+            disabled={loading}
+          >
+            Refresh
+          </Button>
+          <Button
+            component={Link}
+            href="/dashboard/repairs/new"
+            variant="contained"
+            startIcon={<AddIcon />}
+          >
+            New Repair
+          </Button>
+        </Box>
       </Box>
 
-      {/* Filters */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
           <TextField
@@ -251,32 +381,80 @@ export default function RepairsPage() {
             <MenuItem value="Completed">Completed</MenuItem>
           </TextField>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <TextField
-            fullWidth
-            type="date"
-            label="Filter by Date"
-            value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            InputProps={{
-              endAdornment: dateFilter ? (
-                <InputAdornment position="end">
-                  <IconButton 
-                    size="small"
-                    onClick={() => setDateFilter('')}
-                    edge="end"
-                    aria-label="clear date"
-                  >
-                    <ClearIcon fontSize="small" />
-                  </IconButton>
-                </InputAdornment>
-              ) : null,
+        
+        <Grid item xs={12} sm={3} md={1}>
+          <Button 
+            variant="outlined" 
+            size="small"
+            onClick={toggleDateRangeFilter}
+            startIcon={<DateRangeIcon />}
+            sx={{ 
+              height: '56px',
+              width: '100%',
+              borderColor: showDateRange ? 'primary.main' : 'divider',
+              color: showDateRange ? 'primary.main' : 'text.secondary',
             }}
-          />
+          >
+            {showDateRange ? 'Single' : 'Range'}
+          </Button>
         </Grid>
+        
+        <Grid item xs={12} sm={9} md={showDateRange ? 3 : 2}>
+          {!showDateRange ? (
+            <TextField
+              fullWidth
+              type="date"
+              label="Filter by Date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              InputProps={{
+                endAdornment: dateFilter ? (
+                  <InputAdornment position="end">
+                    <IconButton 
+                      size="small"
+                      onClick={() => setDateFilter('')}
+                      edge="end"
+                      aria-label="clear date"
+                    >
+                      <ClearIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ) : null,
+              }}
+            />
+          ) : (
+            <Grid container spacing={1}>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  type="date"
+                  label="Start Date"
+                  value={startDateFilter}
+                  onChange={(e) => setStartDateFilter(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  size="small"
+                  sx={{ height: '56px' }}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  type="date"
+                  label="End Date"
+                  value={endDateFilter}
+                  onChange={(e) => setEndDateFilter(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  size="small"
+                  sx={{ height: '56px' }}
+                />
+              </Grid>
+            </Grid>
+          )}
+        </Grid>
+        
         {hasActiveFilters && (
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', alignItems: 'center' }}>
+          <Grid item xs={12} sm={12} md={showDateRange ? 2 : 3}>
             <Button 
               variant="outlined" 
               color="secondary" 
@@ -313,5 +491,13 @@ export default function RepairsPage() {
         />
       </Box>
     </Box>
+  );
+}
+
+export default function RepairsPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <RepairsContent />
+    </Suspense>
   );
 } 

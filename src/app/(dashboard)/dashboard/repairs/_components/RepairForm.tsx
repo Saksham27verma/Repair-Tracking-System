@@ -22,6 +22,10 @@ import { Database } from '@/app/types/supabase';
 import { generateRepairId } from '@/lib/supabase';
 import { useAlert } from '@/app/components/AlertProvider';
 import { supabase } from '@/lib/supabase';
+import { EstimateStatus } from '@/app/types/database';
+
+// Enable for detailed debugging
+const DEBUG = true;
 
 type RepairStatus = Database['public']['Enums']['repair_status'];
 type WarrantyStatus = Database['public']['Enums']['warranty_status'];
@@ -29,12 +33,40 @@ type PaymentMode = Database['public']['Enums']['payment_mode'];
 type RepairRecord = Database['public']['Tables']['repairs']['Row'];
 type RepairFormData = Database['public']['Tables']['repairs']['Insert'];
 
+// Create a form state type that matches our form fields
+interface FormState {
+  repair_id: string;
+  status: RepairStatus;
+  patient_name: string;
+  phone: string;
+  company: string;
+  product_name: string;
+  model_item_name: string;
+  serial_no: string;
+  quantity: number;
+  warranty: WarrantyStatus;
+  foc: string;
+  purpose: string;
+  repair_estimate: number | null;
+  customer_paid: number | null;
+  payment_mode: PaymentMode | null;
+  programming_done: boolean;
+  remarks: string;
+  estimate_status: EstimateStatus;
+  date_of_receipt?: string;
+  date_out_to_manufacturer?: string | null;
+  date_received_from_manufacturer?: string | null;
+  date_out_to_customer?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 interface Props {
   repair?: RepairRecord;
   mode?: 'create' | 'edit';
 }
 
-const initialFormData: Partial<RepairFormData> = {
+const initialFormData: FormState = {
   repair_id: '',
   status: 'Received',
   patient_name: '',
@@ -47,21 +79,59 @@ const initialFormData: Partial<RepairFormData> = {
   warranty: 'Out of Warranty',
   foc: '',
   purpose: '',
-  repair_estimate_by_company: 0,
-  estimate_by_us: 0,
-  customer_paid: 0,
-  payment_mode: 'Cash',
+  repair_estimate: null,
+  customer_paid: null,
+  payment_mode: null,
   programming_done: false,
   remarks: '',
-  created_at: new Date().toISOString()
+  estimate_status: 'Not Required',
 };
 
 export default function RepairForm({ repair, mode = 'create' }: Props) {
   const router = useRouter();
   const { showAlert } = useAlert();
-  const [formData, setFormData] = useState<Partial<RepairFormData>>(
-    repair ? { ...repair } : { ...initialFormData, repair_id: generateRepairId() }
-  );
+  
+  // Initialize form state with proper types
+  const [formData, setFormData] = useState<FormState>(() => {
+    if (repair) {
+      return {
+        // Initialize with default values first
+        ...initialFormData,
+        // Then override with repair data
+        repair_id: repair.repair_id,
+        status: repair.status,
+        patient_name: repair.patient_name,
+        phone: repair.phone,
+        company: repair.company || '',
+        product_name: repair.product_name,
+        model_item_name: repair.model_item_name,
+        serial_no: repair.serial_no,
+        quantity: repair.quantity,
+        warranty: repair.warranty,
+        foc: repair.foc,
+        purpose: repair.purpose,
+        // Use repair_estimate_by_company as the primary estimate, fallback to estimate_by_us if needed
+        repair_estimate: repair.repair_estimate_by_company || repair.estimate_by_us,
+        customer_paid: repair.customer_paid,
+        payment_mode: repair.payment_mode,
+        programming_done: repair.programming_done,
+        remarks: repair.remarks || '',
+        estimate_status: (repair.estimate_status as EstimateStatus) || 'Not Required',
+        date_of_receipt: repair.date_of_receipt,
+        date_out_to_manufacturer: repair.date_out_to_manufacturer,
+        date_received_from_manufacturer: repair.date_received_from_manufacturer,
+        date_out_to_customer: repair.date_out_to_customer,
+        created_at: repair.created_at,
+        updated_at: repair.updated_at
+      };
+    } else {
+      // New repair - use defaults + generate ID
+      return { 
+        ...initialFormData, 
+        repair_id: generateRepairId() 
+      };
+    }
+  });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -93,6 +163,18 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
     }));
   };
 
+  const handleEstimateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const estimateValue = e.target.value ? Number(e.target.value) : 0;
+    
+    setFormData((prev) => ({
+      ...prev,
+      repair_estimate: estimateValue || null,
+      estimate_status: estimateValue > 0 && (!prev.estimate_status || prev.estimate_status === 'Not Required')
+        ? 'Pending'
+        : prev.estimate_status || 'Not Required'
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
@@ -121,12 +203,12 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
 
       // First, create or update the customer
       const customerData = {
-        name: formData.patient_name!,
-        phone: formData.phone!,
+        name: formData.patient_name,
+        phone: formData.phone,
         company: formData.company || null
       };
 
-      console.log('Creating/updating customer with data:', customerData);
+      if (DEBUG) console.log('Creating/updating customer with data:', customerData);
 
       // Validate phone number format
       if (!customerData.phone || customerData.phone.length < 10) {
@@ -148,7 +230,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
       let customerId;
       
       if (existingCustomer) {
-        console.log('Found existing customer:', existingCustomer);
+        if (DEBUG) console.log('Found existing customer:', existingCustomer);
         // Update existing customer
         const { data: updatedCustomer, error: updateError } = await supabase
           .from('customers')
@@ -162,22 +244,13 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
           throw new Error(`Failed to update customer: ${updateError.message}`);
         }
 
-        if (!updatedCustomer) {
-          throw new Error('Customer update returned no data');
-        }
-
-        console.log('Successfully updated customer:', updatedCustomer);
         customerId = existingCustomer.id;
       } else {
-        console.log('No existing customer found, creating new customer');
+        if (DEBUG) console.log('No existing customer found, creating new customer');
         // Create new customer
         const { data: newCustomer, error: insertError } = await supabase
           .from('customers')
-          .insert([{
-            name: customerData.name,
-            phone: customerData.phone,
-            company: customerData.company
-          }])
+          .insert([customerData])
           .select()
           .single();
 
@@ -190,7 +263,6 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
           throw new Error('Customer creation returned no data');
         }
 
-        console.log('Successfully created new customer:', newCustomer);
         customerId = newCustomer.id;
       }
 
@@ -198,48 +270,94 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
         throw new Error('Failed to get customer ID after create/update');
       }
 
-      console.log('Proceeding with customer ID:', customerId);
+      if (DEBUG) console.log('Proceeding with customer ID:', customerId);
 
-      // Prepare repair data with proper type conversions
-      const repairData = {
-        ...formData,
+      // Ensure date fields are in proper format
+      const now = new Date().toISOString();
+      const dateOfReceipt = formData.date_of_receipt || now;
+
+      // Prepare database object
+      const dbData = {
         customer_id: customerId,
-        repair_id: repair?.repair_id || generateRepairId(),
-        repair_estimate_by_company: formData.repair_estimate_by_company ? Number(formData.repair_estimate_by_company) : null,
-        estimate_by_us: formData.estimate_by_us ? Number(formData.estimate_by_us) : null,
-        customer_paid: formData.customer_paid ? Number(formData.customer_paid) : null,
-        quantity: formData.quantity ? Number(formData.quantity) : 1,
+        patient_name: formData.patient_name,
+        phone: formData.phone,
+        company: formData.company || null,
+        product_name: formData.product_name,
+        model_item_name: formData.model_item_name,
+        serial_no: formData.serial_no,
+        quantity: Number(formData.quantity) || 1,
+        warranty: formData.warranty,
+        foc: formData.foc,
+        purpose: formData.purpose,
+        repair_estimate_by_company: formData.repair_estimate, // Store our single estimate in the repair_estimate_by_company field
+        estimate_by_us: null, // We're not using this field anymore
+        customer_paid: formData.customer_paid,
+        payment_mode: formData.payment_mode || null,
         programming_done: Boolean(formData.programming_done),
-        status: formData.status || 'Received',
-        created_at: new Date().toISOString()
+        remarks: formData.remarks || null,
+        estimate_status: formData.estimate_status,
+        updated_at: now
       };
 
-      console.log('Creating repair with data:', repairData);
-
       if (mode === 'create') {
+        // Add fields specific to creation
+        const createData = {
+          ...dbData,
+          repair_id: formData.repair_id,
+          status: 'Received', // Always start with Received
+          date_of_receipt: dateOfReceipt,
+          created_at: now
+        };
+        
+        if (DEBUG) console.log('Creating repair with data:', createData);
+
         const { error: repairError } = await supabase
           .from('repairs')
-          .insert([repairData])
-          .select()
-          .single();
+          .insert([createData]);
 
         if (repairError) {
           console.error('Error creating repair:', repairError);
-          throw repairError;
+          // Show more detailed error information
+          if (DEBUG) {
+            console.log('Error details:', repairError.details, repairError.hint, repairError.code);
+          }
+          throw new Error(`Failed to create repair: ${repairError.message}${repairError.details ? ` (${repairError.details})` : ''}`);
         }
+        
         showAlert('Repair created successfully', 'success');
       } else {
+        // Add fields specific to updates
+        const updateData = {
+          ...dbData,
+          status: formData.status,
+          date_out_to_manufacturer: formData.date_out_to_manufacturer,
+          date_received_from_manufacturer: formData.date_received_from_manufacturer,
+          date_out_to_customer: formData.date_out_to_customer
+        };
+        
+        if (DEBUG) console.log('Updating repair with data:', updateData);
+
         const { error: repairError } = await supabase
           .from('repairs')
-          .update(repairData)
-          .eq('id', repair?.id)
-          .select()
-          .single();
+          .update(updateData)
+          .eq('id', repair?.id);
 
         if (repairError) {
           console.error('Error updating repair:', repairError);
-          throw repairError;
+          throw new Error(`Failed to update repair: ${repairError.message}`);
         }
+        
+        if (repair?.repair_id) {
+          try {
+            await fetch(`/api/cache-invalidate?repair_id=${repair.repair_id}`, {
+              method: 'POST',
+              cache: 'no-store',
+            });
+          } catch (cacheError) {
+            console.error('Failed to invalidate cache, but repair was updated:', cacheError);
+          }
+        }
+        
         showAlert('Repair updated successfully', 'success');
       }
 
@@ -375,14 +493,15 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
-                  required
                   fullWidth
-                  label="Company Estimate"
-                  name="repair_estimate_by_company"
                   type="number"
-                  value={formData.repair_estimate_by_company || ''}
-                  onChange={handleChange}
+                  label="Repair Estimate"
+                  name="repair_estimate"
+                  value={formData.repair_estimate || ''}
+                  onChange={handleEstimateChange}
                   InputProps={{ inputProps: { min: 0, step: 0.01 } }}
+                  helperText={formData.repair_estimate && formData.repair_estimate > 0 ? 
+                    "Patient will need to approve this estimate" : ""}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -440,17 +559,6 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                 <TextField
                   fullWidth
                   type="number"
-                  label="Our Estimate"
-                  name="estimate_by_us"
-                  value={formData.estimate_by_us || ''}
-                  onChange={handleChange}
-                  InputProps={{ inputProps: { min: 0, step: 0.01 } }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  type="number"
                   label="Amount Paid"
                   name="customer_paid"
                   value={formData.customer_paid || ''}
@@ -464,7 +572,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                   select
                   label="Payment Mode"
                   name="payment_mode"
-                  value={formData.payment_mode}
+                  value={formData.payment_mode || ''}
                   onChange={handleChange}
                 >
                   <MenuItem value="Cash">Cash</MenuItem>
@@ -473,6 +581,23 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                   <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
                 </TextField>
               </Grid>
+              {formData.repair_estimate && formData.repair_estimate > 0 && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    select
+                    label="Estimate Status"
+                    name="estimate_status"
+                    value={formData.estimate_status || 'Pending'}
+                    onChange={handleChange}
+                  >
+                    <MenuItem value="Pending">Pending Approval</MenuItem>
+                    <MenuItem value="Approved">Approved</MenuItem>
+                    <MenuItem value="Declined">Declined</MenuItem>
+                    <MenuItem value="Not Required">Not Required</MenuItem>
+                  </TextField>
+                </Grid>
+              )}
             </Grid>
           </Grid>
 
@@ -507,7 +632,29 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
 
           {error && (
             <Grid item xs={12}>
-              <Alert severity="error">{error}</Alert>
+              <Alert 
+                severity="error" 
+                variant="filled" 
+                sx={{ 
+                  mb: 3, 
+                  '& .MuiAlert-message': { 
+                    fontWeight: 'medium',
+                  } 
+                }}
+              >
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'bold' }}>
+                  Error creating repair:
+                </Typography>
+                <Typography variant="body2">
+                  {error}
+                </Typography>
+                {error.includes('duplicate key') && (
+                  <Typography variant="body2" sx={{ mt: 1 }}>
+                    It appears this record already exists or there's a conflict with an existing entry.
+                    Try using a different phone number or check if the customer already exists.
+                  </Typography>
+                )}
+              </Alert>
             </Grid>
           )}
 

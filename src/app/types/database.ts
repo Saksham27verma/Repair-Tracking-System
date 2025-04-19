@@ -5,6 +5,12 @@ export type RepairStatus =
   | 'Ready for Pickup'
   | 'Completed';
 
+export type EstimateStatus = 
+  | 'Pending' 
+  | 'Approved' 
+  | 'Declined' 
+  | 'Not Required';
+
 export type WarrantyStatus = 'In Warranty' | 'Out of Warranty' | 'Extended Warranty';
 
 export type PaymentMode = 'Cash' | 'Card' | 'UPI' | 'Bank Transfer';
@@ -41,6 +47,10 @@ export interface RepairRecord {
   estimate_by_us?: number;
   customer_paid?: number;
   payment_mode?: PaymentMode;
+  
+  // Estimate Approval
+  estimate_status?: EstimateStatus;
+  estimate_approval_date?: string;
   
   // Additional Information
   programming_done?: boolean;

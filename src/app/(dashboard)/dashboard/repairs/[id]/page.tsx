@@ -12,35 +12,39 @@ import {
   List,
   ListItem,
   ListItemText,
+  Badge,
 } from '@mui/material';
-import { Edit as EditIcon } from '@mui/icons-material';
-import { supabase } from '@/lib/supabase';
+import { Edit as EditIcon, AttachMoney as MoneyIcon, CheckCircle as ApprovedIcon, Cancel as DeclinedIcon, HourglassEmpty as PendingIcon } from '@mui/icons-material';
+import { supabase, getFreshSupabaseClient } from '@/lib/supabase';
 import { type Database } from '@/app/types/supabase';
+import { EstimateStatus } from '@/app/types/database';
+import RefreshButton from '@/app/components/RefreshButton';
+import RepairStatusStepper from '@/app/components/RepairStatusStepper';
 
-type RepairRecord = Database['public']['Tables']['repairs']['Row'];
+type RepairRecord = Database['public']['Tables']['repairs']['Row'] & {
+  estimate_status?: EstimateStatus;
+  estimate_approval_date?: string;
+};
 
 async function getRepair(id: string) {
-  const { data: repair, error } = await supabase
+  // Use fresh client to avoid cache issues
+  const freshClient = getFreshSupabaseClient();
+  
+  const { data: repair, error } = await freshClient
     .from('repairs')
     .select('*')
     .eq('id', id)
     .single();
 
-  if (error || !repair) {
+  if (error) {
     return null;
   }
 
-  return repair;
-}
-
-function formatDate(date: string | null) {
-  if (!date) return '-';
-  return new Date(date).toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  if (!repair) {
+    return null;
+  }
+  
+  return repair as RepairRecord;
 }
 
 function getStatusColor(status: string) {
@@ -60,6 +64,51 @@ function getStatusColor(status: string) {
   }
 }
 
+function getEstimateStatusInfo(status: EstimateStatus | undefined) {
+  switch (status) {
+    case 'Approved':
+      return { 
+        color: 'success' as const, 
+        icon: <ApprovedIcon />, 
+        label: 'Approved by Patient',
+        iconColor: 'success' as const
+      };
+    case 'Declined':
+      return { 
+        color: 'error' as const, 
+        icon: <DeclinedIcon />, 
+        label: 'Declined by Patient',
+        iconColor: 'error' as const
+      };
+    case 'Pending':
+      return { 
+        color: 'warning' as const, 
+        icon: <PendingIcon />, 
+        label: 'Pending Approval',
+        iconColor: 'warning' as const
+      };
+    case 'Not Required':
+    default:
+      return { 
+        color: 'default' as const, 
+        icon: undefined, 
+        label: 'No Approval Required',
+        iconColor: 'inherit' as const
+      };
+  }
+}
+
+// Create a local formatDate function since we can't import the utils module
+function formatDate(date: string | null) {
+  if (!date) return '-';
+  return new Date(date).toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
 export default async function RepairDetailPage({
   params,
 }: {
@@ -71,18 +120,25 @@ export default async function RepairDetailPage({
     notFound();
   }
 
+  const estimateStatus = repair.estimate_status as EstimateStatus | undefined;
+  const hasEstimate = repair.repair_estimate_by_company && repair.repair_estimate_by_company > 0;
+  const estimateInfo = hasEstimate ? getEstimateStatusInfo(estimateStatus) : null;
+
   return (
     <Container maxWidth="lg">
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h4">Repair Details</Typography>
-        <Button
-          component={Link}
-          href={`/dashboard/repairs/${repair.id}/edit`}
-          variant="contained"
-          startIcon={<EditIcon />}
-        >
-          Edit Repair
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <RefreshButton variant="outlined" size="small" />
+          <Button
+            component={Link}
+            href={`/dashboard/repairs/${repair.id}/edit`}
+            variant="contained"
+            startIcon={<EditIcon />}
+          >
+            Edit Repair
+          </Button>
+        </Box>
       </Box>
 
       <Paper elevation={3} sx={{ p: 4, mb: 4 }}>
@@ -91,21 +147,72 @@ export default async function RepairDetailPage({
           <Grid item xs={12}>
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" gutterBottom>
-                Status
+                Repair Status
               </Typography>
-              <Chip
-                label={repair.status}
-                color={getStatusColor(repair.status)}
-                sx={{ fontSize: '1rem', py: 2, px: 1 }}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                <Chip
+                  label={repair.status}
+                  color={getStatusColor(repair.status)}
+                  sx={{ fontSize: '1rem', py: 2, px: 1 }}
+                />
+                <Typography variant="body2" color="text.secondary">
+                  Repair ID: {repair.repair_id}
+                </Typography>
+              </Box>
+              
+              {/* Add the RepairStatusStepper component */}
+              <RepairStatusStepper
+                currentStatus={repair.status}
+                size="medium"
+                withTooltips={true}
+                estimateStatus={estimateStatus}
               />
             </Box>
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="body2" color="text.secondary">
-                Repair ID
-              </Typography>
-              <Typography variant="h6">{repair.repair_id}</Typography>
-            </Box>
           </Grid>
+
+          {/* Estimate Approval Section - Show if there's an estimate */}
+          {hasEstimate && estimateInfo && repair.repair_estimate_by_company && (
+            <Grid item xs={12}>
+              <Paper 
+                variant="outlined" 
+                sx={{ 
+                  p: 2, 
+                  borderColor: `${estimateInfo.color}.main`,
+                  mb: 2
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                  <MoneyIcon color={estimateInfo.iconColor} />
+                  <Typography variant="h6">
+                    Repair Estimate: ₹{repair.repair_estimate_by_company}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Chip
+                    icon={estimateInfo.icon}
+                    label={estimateInfo.label}
+                    color={estimateInfo.color}
+                    size="small"
+                  />
+                  {repair.estimate_approval_date && (
+                    <Typography variant="body2" color="text.secondary">
+                      {estimateStatus === 'Approved' ? 'Approved' : 'Responded'} on {formatDate(repair.estimate_approval_date)}
+                    </Typography>
+                  )}
+                </Box>
+                {estimateStatus === 'Pending' && (
+                  <Typography variant="body2" sx={{ mt: 1, color: 'text.secondary' }}>
+                    Waiting for patient approval. Patient can approve or decline this estimate from their repair tracking page.
+                  </Typography>
+                )}
+                {estimateStatus === 'Declined' && (
+                  <Typography variant="body2" sx={{ mt: 1, color: 'error.main' }}>
+                    Patient has declined the repair estimate. The device should be returned without repair.
+                  </Typography>
+                )}
+              </Paper>
+            </Grid>
+          )}
 
           <Grid item xs={12}>
             <Divider sx={{ my: 2 }} />
@@ -151,7 +258,7 @@ export default async function RepairDetailPage({
             </Box>
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                Model/Item Name
+                Model/Item
               </Typography>
               <Typography variant="body1">{repair.model_item_name}</Typography>
             </Box>
@@ -211,12 +318,10 @@ export default async function RepairDetailPage({
             </Typography>
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                Repair Estimate by Company
+                Manufacturer's Estimate
               </Typography>
               <Typography variant="body1">
-                {repair.repair_estimate_by_company
-                  ? `₹${repair.repair_estimate_by_company}`
-                  : '-'}
+                {repair.repair_estimate_by_company ? `₹${repair.repair_estimate_by_company}` : '-'}
               </Typography>
             </Box>
             <Box sx={{ mb: 2 }}>
@@ -235,14 +340,14 @@ export default async function RepairDetailPage({
                 {repair.customer_paid ? `₹${repair.customer_paid}` : '-'}
               </Typography>
             </Box>
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                Payment Mode
-              </Typography>
-              <Typography variant="body1">
-                {repair.payment_mode || '-'}
-              </Typography>
-            </Box>
+            {repair.payment_mode && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Payment Mode
+                </Typography>
+                <Typography variant="body1">{repair.payment_mode}</Typography>
+              </Box>
+            )}
           </Grid>
 
           {/* Timeline */}

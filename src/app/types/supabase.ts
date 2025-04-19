@@ -63,6 +63,8 @@ export type Database = {
           remarks: string | null;
           created_at: string;
           updated_at: string;
+          estimate_status?: string | null;
+          estimate_approval_date?: string | null;
         };
         Insert: {
           id?: string;
@@ -91,6 +93,8 @@ export type Database = {
           remarks?: string | null;
           created_at?: string;
           updated_at?: string;
+          estimate_status?: string | null;
+          estimate_approval_date?: string | null;
         };
         Update: {
           id?: string;
@@ -119,6 +123,8 @@ export type Database = {
           remarks?: string | null;
           created_at?: string;
           updated_at?: string;
+          estimate_status?: string | null;
+          estimate_approval_date?: string | null;
         };
       };
     };

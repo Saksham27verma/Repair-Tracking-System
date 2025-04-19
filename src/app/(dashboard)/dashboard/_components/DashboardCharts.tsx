@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   Box,
   Grid,
@@ -7,6 +8,9 @@ import {
   Typography,
   Card,
   CardContent,
+  TextField,
+  Button,
+  Stack,
 } from '@mui/material';
 import {
   BarChart,
@@ -27,6 +31,8 @@ interface DashboardChartsProps {
 
 export default function DashboardCharts({ statusCounts, dailyCounts }: DashboardChartsProps) {
   const router = useRouter();
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
 
   const statusCards = [
     {
@@ -68,6 +74,30 @@ export default function DashboardCharts({ statusCounts, dailyCounts }: Dashboard
       router.push(`/dashboard/repairs?date=${clickedDate}`);
     }
   };
+
+  const handleDateRangeSubmit = () => {
+    if (startDate && endDate) {
+      router.push(`/dashboard/repairs?startDate=${startDate}&endDate=${endDate}`);
+    }
+  };
+
+  // Filter chart data if date range is set
+  const filteredChartData = dailyCounts.filter(item => {
+    if (!startDate && !endDate) return true;
+    
+    const itemDate = new Date(item.date);
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+    
+    if (start && end) {
+      return itemDate >= start && itemDate <= end;
+    } else if (start) {
+      return itemDate >= start;
+    } else if (end) {
+      return itemDate <= end;
+    }
+    return true;
+  });
 
   return (
     <>
@@ -123,16 +153,47 @@ export default function DashboardCharts({ statusCounts, dailyCounts }: Dashboard
           transition: 'box-shadow 0.3s ease-in-out',
         }}
       >
-        <Typography variant="h6" gutterBottom>
-          Repairs Over Time
-          <Typography component="span" variant="body2" sx={{ ml: 1, color: 'text.secondary' }}>
-            (Click on a bar to see repairs from that day)
-          </Typography>
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box>
+            <Typography variant="h6" gutterBottom>
+              Repairs Over Time
+              <Typography component="span" variant="body2" sx={{ ml: 1, color: 'text.secondary' }}>
+                (Click on a bar to see repairs from that day)
+              </Typography>
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <TextField
+              type="date"
+              label="From"
+              size="small"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              type="date"
+              label="To"
+              size="small"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <Button 
+              variant="contained" 
+              size="small"
+              onClick={handleDateRangeSubmit}
+              disabled={!startDate || !endDate}
+            >
+              Filter
+            </Button>
+          </Stack>
+        </Box>
+        
         <Box sx={{ height: 400 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart 
-              data={dailyCounts}
+              data={filteredChartData}
               onClick={handleBarClick}
             >
               <CartesianGrid strokeDasharray="3 3" />
