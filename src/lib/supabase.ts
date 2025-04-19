@@ -1,61 +1,64 @@
 import { createClient } from '@supabase/supabase-js'
 import { type Database } from '@/app/types/supabase'
+import 'server-only'
 
-// Create a single instance of the Supabase client
-export const supabase = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true
-    },
-    db: {
-      schema: 'public'
-    }
-  }
-)
+// Check if environment variables are defined
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 
-// Get a fresh supabase client that won't use any cached data
+// Validate that we have the required environment variables
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn('Supabase environment variables are not set. Auth functionality will not work.')
+}
+
+// Create a Supabase client for the browser
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+
+// Get a fresh Supabase client (bypassing any caching)
 export function getFreshSupabaseClient() {
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        persistSession: false,
-      },
-    }
-  );
+  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+    },
+  })
+}
+
+// Same but with the service role key for admin operations
+export function getAdminSupabaseClient() {
+  if (!supabaseServiceKey) {
+    console.warn('SUPABASE_SERVICE_ROLE_KEY is not set. Admin operations will not work.')
+  }
+  
+  return createClient<Database>(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      persistSession: false,
+    },
+  })
 }
 
 // This function can be used to refresh the schema cache for a specific table
 export async function refreshSchemaCache(table = 'repairs') {
   try {
-    // Create a new client to ensure we don't use any cached schema
-    const freshClient = getFreshSupabaseClient();
-    
-    // Force a lightweight query to refresh the schema
-    await freshClient
-      .from(table)
-      .select('id')
-      .limit(1);
-      
-    console.log(`Schema cache refreshed for table: ${table}`);
-    return true;
+    // Simply get a small amount of data to refresh the schema
+    const admin = getAdminSupabaseClient()
+    await admin.from(table).select('id').limit(1)
+    console.log(`Schema cache refreshed for ${table}`)
   } catch (error) {
-    console.error('Error refreshing schema cache:', error);
-    return false;
+    console.error('Error refreshing schema cache:', error)
   }
 }
 
 // Helper function to generate repair IDs
 export function generateRepairId(): string {
-  const date = new Date()
-  const year = date.getFullYear().toString().slice(-2)
-  const month = (date.getMonth() + 1).toString().padStart(2, '0')
-  const day = date.getDate().toString().padStart(2, '0')
-  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0')
+  const now = new Date()
+  const year = now.getFullYear().toString().slice(2) // Last two digits of year
+  const month = (now.getMonth() + 1).toString().padStart(2, '0')
+  const day = now.getDate().toString().padStart(2, '0')
+  
+  // Generate a random 4 digit number for the last part
+  const random = Math.floor(Math.random() * 9000) + 1000 // 1000-9999
+  
+  // Format: REPYYMMDDXXXX
   return `REP${year}${month}${day}${random}`
 } 
