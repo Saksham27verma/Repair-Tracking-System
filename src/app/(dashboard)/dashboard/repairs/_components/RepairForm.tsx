@@ -418,15 +418,26 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
 
   const handleDelete = async () => {
     if (!repair?.id) return;
-
+    
+    setLoading(true);
     try {
-      const response = await fetch(`/api/repairs?id=${repair.id}`, {
-        method: 'DELETE',
-      });
+      // First, try with the Supabase client directly
+      const { error: supabaseError } = await supabase
+        .from('repairs')
+        .delete()
+        .eq('id', repair.id);
+      
+      if (supabaseError) {
+        console.error('Error deleting with Supabase client:', supabaseError);
+        // Fall back to API route if direct deletion fails
+        const response = await fetch(`/api/repairs?id=${repair.id}`, {
+          method: 'DELETE',
+        });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to delete repair record');
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to delete repair record');
+        }
       }
 
       showAlert('Repair record deleted successfully', 'success');
@@ -436,6 +447,9 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred while deleting';
       setError(errorMessage);
       showAlert(errorMessage, 'error');
+    } finally {
+      setLoading(false);
+      setDeleteDialogOpen(false);
     }
   };
 
@@ -792,7 +806,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
       </Box>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+      <Dialog open={deleteDialogOpen} onClose={() => !loading && setDeleteDialogOpen(false)}>
         <DialogTitle>Delete Repair</DialogTitle>
         <DialogContent>
           <Typography>
@@ -800,9 +814,19 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleDelete} color="error">
-            Delete
+          <Button 
+            onClick={() => setDeleteDialogOpen(false)} 
+            disabled={loading}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDelete} 
+            color="error" 
+            disabled={loading}
+            startIcon={loading ? <CircularProgress size={20} /> : null}
+          >
+            {loading ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>
