@@ -48,7 +48,6 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import { styled } from '@mui/material/styles';
 import { nanoid } from 'nanoid';
-import { createSlug } from '@/lib/utils';
 
 dayjs.extend(utc);
 

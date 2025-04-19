@@ -156,7 +156,7 @@ export default function EstimateApproval({
             ₹{estimate}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Repair Estimate
+            Repair Estimate (Inclusive of 18% GST)
           </Typography>
         </Box>
         
@@ -210,8 +210,8 @@ export default function EstimateApproval({
         <DialogContent>
           <Typography>
             {dialogAction === 'approve'
-              ? `Are you sure you want to approve the repair estimate of ₹${estimate}? Your repair will proceed with this cost.`
-              : `Are you sure you want to decline the repair estimate of ₹${estimate}? Your device will be returned to you without being repaired.`}
+              ? `Are you sure you want to approve the repair estimate of ₹${estimate} (inclusive of 18% GST)? Your repair will proceed with this cost.`
+              : `Are you sure you want to decline the repair estimate of ₹${estimate} (inclusive of 18% GST)? Your device will be returned to you without being repaired.`}
           </Typography>
         </DialogContent>
         <DialogActions>
