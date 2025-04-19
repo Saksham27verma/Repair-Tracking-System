@@ -46,7 +46,7 @@ export default function HomePage() {
                 mb: 1,
               }}
             >
-              Hearing Aid Repair Tracking
+              Hearing Hope Repair Tracking
             </Typography>
             <Typography 
               variant="h6" 
@@ -54,7 +54,7 @@ export default function HomePage() {
               align="center" 
               sx={{ 
                 color: '#64748b',
-                maxWidth: 500,
+                maxWidth: 550,
                 fontSize: { xs: '1rem', md: '1.25rem' },
                 mb: 2,
                 lineHeight: 1.5,
