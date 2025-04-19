@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { getAdminSupabaseClient } from '@/lib/supabase';
+import { refreshSchemaCache } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   try {
@@ -62,84 +64,75 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  console.log('DELETE request received in repairs API route');
+  
   try {
-    // Use getFreshSupabaseClient from lib/supabase.ts for better reliability
-    const { getFreshSupabaseClient, getAdminSupabaseClient } = await import('@/lib/supabase');
-    const supabase = getAdminSupabaseClient(); // Use admin client for deletion
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-
-    if (!id) {
-      return NextResponse.json(
-        { error: 'ID is required' },
-        { status: 400 }
-      );
-    }
-
-    console.log(`Attempting to delete repair with ID: ${id}`);
-
-    // First check if the record exists
-    const { data: repair, error: fetchError } = await supabase
-      .from('repairs')
-      .select('id, repair_id')
-      .eq('id', id)
-      .single();
-
-    if (fetchError) {
-      console.error('Error finding repair to delete:', fetchError);
-      return NextResponse.json(
-        { error: `Record not found: ${fetchError.message}` },
-        { status: 404 }
-      );
-    }
-
-    if (!repair) {
-      return NextResponse.json(
-        { error: 'Repair record not found' },
-        { status: 404 }
-      );
-    }
-
-    // Proceed with deletion
-    const result = await supabase
-      .from('repairs')
-      .delete()
-      .eq('id', id);
-
-    if (result.error) {
-      console.error('Error deleting repair:', result.error);
-      return NextResponse.json(
-        { error: `Failed to delete repair: ${result.error.message}` },
-        { status: 400 }
-      );
-    }
-
-    console.log(`Successfully deleted repair with ID: ${id}`);
+    // Get the repair id from the URL
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
     
-    // Try to invalidate cache if we have a repair_id
-    if (repair.repair_id) {
-      try {
-        const cacheUrl = new URL('/api/cache-invalidate', request.url);
-        cacheUrl.searchParams.set('repair_id', repair.repair_id);
-        cacheUrl.searchParams.set('id', id);
-        
-        await fetch(cacheUrl.toString(), {
-          method: 'POST',
-          cache: 'no-store',
-        });
-      } catch (cacheError) {
-        console.warn('Failed to invalidate cache, but deletion was successful:', cacheError);
-      }
+    console.log('Attempting to delete repair with ID:', id);
+    
+    if (!id) {
+      console.error('No ID provided for deletion');
+      return Response.json({ error: 'No repair ID provided' }, { status: 400 });
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Repair record deleted successfully'
-    });
+    try {
+      // First check if the record exists
+      const supabase = getAdminSupabaseClient();
+      console.log('Got admin Supabase client');
+      
+      // Verify the record exists first
+      const { data: existingRepair, error: fetchError } = await supabase
+        .from('repairs')
+        .select('id')
+        .eq('id', id)
+        .single();
+      
+      if (fetchError || !existingRepair) {
+        console.error('Record not found or error fetching:', fetchError);
+        return Response.json(
+          { error: `Repair not found: ${fetchError?.message || 'No record with that ID exists'}` }, 
+          { status: 404 }
+        );
+      }
+      
+      console.log('Found repair record, proceeding with deletion');
+      
+      // Proceed with deletion
+      const { error: deleteError } = await supabase
+        .from('repairs')
+        .delete()
+        .eq('id', id);
+      
+      if (deleteError) {
+        console.error('Error in Supabase deletion:', deleteError);
+        throw new Error(`Supabase deletion error: ${deleteError.message}`);
+      }
+      
+      console.log('Repair successfully deleted');
+      
+      // Try to invalidate cache if successful
+      try {
+        await refreshSchemaCache('repairs');
+        console.log('Cache refreshed after deletion');
+      } catch (cacheError) {
+        console.warn('Failed to refresh cache, but deletion was successful:', cacheError);
+      }
+      
+      return Response.json({ success: true, message: 'Repair deleted successfully' });
+    } catch (supabaseError) {
+      console.error('Supabase operation error:', supabaseError);
+      return Response.json(
+        { error: `Database error: ${supabaseError instanceof Error ? supabaseError.message : 'Unknown error'}` }, 
+        { status: 500 }
+      );
+    }
   } catch (error) {
-    console.error('Error in repair deletion:', error);
-    return NextResponse.json(
-      { error: 'Internal server error during deletion' },
+    console.error('Unexpected error in DELETE handler:', error);
+    return Response.json(
+      { error: 'Server error occurred during deletion' }, 
       { status: 500 }
     );
   }

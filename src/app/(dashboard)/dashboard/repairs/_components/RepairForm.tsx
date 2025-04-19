@@ -417,39 +417,58 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
   };
 
   const handleDelete = async () => {
-    if (!repair?.id) return;
-    
     setLoading(true);
+    setError(null);
+    
+    console.log(`Attempting to delete repair with ID: ${repair?.id}`);
+    
     try {
-      // First, try with the Supabase client directly
-      const { error: supabaseError } = await supabase
-        .from('repairs')
-        .delete()
-        .eq('id', repair.id);
+      // First attempt: Delete via API route
+      console.log('Attempting deletion via API route...');
+      const deleteUrl = `/api/repairs?id=${repair?.id}`;
       
-      if (supabaseError) {
-        console.error('Error deleting with Supabase client:', supabaseError);
-        // Fall back to API route if direct deletion fails
-        const response = await fetch(`/api/repairs?id=${repair.id}`, {
-          method: 'DELETE',
-        });
-
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error || 'Failed to delete repair record');
+      const response = await fetch(deleteUrl, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        console.error('API deletion failed:', result);
+        
+        // If API fails, try direct Supabase deletion as fallback
+        console.log('API deletion failed, attempting direct Supabase deletion...');
+        
+        const { error: deleteError } = await supabase
+          .from('repairs')
+          .delete()
+          .eq('id', repair?.id);
+        
+        if (deleteError) {
+          console.error('Direct Supabase deletion also failed:', deleteError);
+          throw new Error(`Failed to delete repair: ${deleteError.message}`);
+        } else {
+          console.log('Direct Supabase deletion succeeded!');
         }
+      } else {
+        console.log('API deletion succeeded:', result);
       }
-
-      showAlert('Repair record deleted successfully', 'success');
+      
+      // Success - close dialog and redirect
+      setDeleteDialogOpen(false);
+      setLoading(false);
       router.push('/dashboard/repairs');
       router.refresh();
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred while deleting';
-      setError(errorMessage);
-      showAlert(errorMessage, 'error');
-    } finally {
+      showAlert('Repair deleted successfully', 'success');
+      
+    } catch (error) {
+      console.error('Error during repair deletion:', error);
       setLoading(false);
-      setDeleteDialogOpen(false);
+      setError(`Failed to delete: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
