@@ -17,6 +17,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface DashboardChartsProps {
   statusCounts: any[];
@@ -24,39 +26,70 @@ interface DashboardChartsProps {
 }
 
 export default function DashboardCharts({ statusCounts, dailyCounts }: DashboardChartsProps) {
+  const router = useRouter();
+
   const statusCards = [
     {
       title: 'Active Repairs',
       count: statusCounts.find((s) => s.status === 'Received')?.count || 0,
       color: '#EE6417',
+      status: 'Received',
     },
     {
       title: 'With Manufacturer',
       count:
         statusCounts.find((s) => s.status === 'Sent to Manufacturer')?.count || 0,
       color: '#3aa986',
+      status: 'Sent to Manufacturer',
     },
     {
       title: 'Ready for Pickup',
       count:
         statusCounts.find((s) => s.status === 'Ready for Pickup')?.count || 0,
       color: '#2196f3',
+      status: 'Ready for Pickup',
     },
     {
       title: 'Completed',
       count: statusCounts.find((s) => s.status === 'Completed')?.count || 0,
       color: '#4caf50',
+      status: 'Completed',
     },
   ];
+
+  const handleCardClick = (status: string) => {
+    router.push(`/dashboard/repairs?status=${encodeURIComponent(status)}`);
+  };
 
   return (
     <>
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {statusCards.map((card) => (
           <Grid item xs={12} sm={6} md={3} key={card.title}>
-            <Card>
+            <Card 
+              sx={{ 
+                cursor: 'pointer',
+                transition: 'all 0.2s ease-in-out',
+                '&:hover': {
+                  transform: 'translateY(-4px)',
+                  boxShadow: '0 8px 20px rgba(0, 0, 0, 0.1)',
+                  '& .card-title': {
+                    color: card.color,
+                  },
+                },
+              }}
+              onClick={() => handleCardClick(card.status)}
+            >
               <CardContent>
-                <Typography color="text.secondary" gutterBottom>
+                <Typography 
+                  className="card-title"
+                  color="text.secondary" 
+                  gutterBottom
+                  sx={{ 
+                    fontWeight: 500,
+                    transition: 'color 0.2s ease-in-out',
+                  }}
+                >
                   {card.title}
                 </Typography>
                 <Typography

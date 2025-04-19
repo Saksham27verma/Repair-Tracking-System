@@ -79,7 +79,7 @@ export default function HomePage() {
             <RepairTrackingForm />
           </Paper>
 
-          <Box sx={{ mt: 3, textAlign: 'center' }}>
+          <Box sx={{ mt: 0, textAlign: 'center' }}>
             <Typography 
               variant="body1" 
               sx={{ 

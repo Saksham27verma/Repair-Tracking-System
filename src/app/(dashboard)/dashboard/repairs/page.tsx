@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   Box,
   Button,
@@ -88,10 +89,13 @@ const columns: GridColDef[] = [
 ];
 
 export default function RepairsPage() {
+  const searchParams = useSearchParams();
+  const statusParam = searchParams.get('status');
+  
   const [repairs, setRepairs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>(statusParam || 'all');
 
   const fetchRepairs = async () => {
     let query = supabase.from('repairs').select('*');
@@ -118,6 +122,13 @@ export default function RepairsPage() {
     setRepairs(data || []);
     setLoading(false);
   };
+
+  // Initialize the filter based on URL params
+  useEffect(() => {
+    if (statusParam) {
+      setStatusFilter(statusParam);
+    }
+  }, [statusParam]);
 
   // Fetch repairs on mount and when filters change
   useEffect(() => {

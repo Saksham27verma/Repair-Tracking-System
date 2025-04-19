@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   TextField,
@@ -11,20 +11,40 @@ import {
 } from '@mui/material';
 
 interface FormData {
-  name: string;
   phone: string;
+  captcha: string;
 }
 
 export default function RepairTrackingForm() {
   const [formData, setFormData] = useState<FormData>({
-    name: '',
     phone: '',
+    captcha: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [captchaText, setCaptchaText] = useState('');
+
+  // Generate a random captcha text
+  const generateCaptcha = () => {
+    const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let result = '';
+    for (let i = 0; i < 6; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setCaptchaText(result);
+  };
+
+  useEffect(() => {
+    generateCaptcha();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.captcha.toUpperCase() !== captchaText) {
+      setError('Invalid captcha code');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -34,7 +54,7 @@ export default function RepairTrackingForm() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ phone: formData.phone }),
       });
 
       if (!response.ok) {
@@ -69,20 +89,6 @@ export default function RepairTrackingForm() {
         margin="normal"
         required
         fullWidth
-        id="name"
-        label="Patient Name"
-        name="name"
-        autoComplete="name"
-        value={formData.name}
-        onChange={handleChange}
-        error={!formData.name}
-        helperText={!formData.name && 'Name is required'}
-      />
-
-      <TextField
-        margin="normal"
-        required
-        fullWidth
         id="phone"
         label="Phone Number"
         name="phone"
@@ -91,6 +97,63 @@ export default function RepairTrackingForm() {
         onChange={handleChange}
         error={!formData.phone}
         helperText={!formData.phone && 'Phone number is required'}
+        inputProps={{
+          pattern: '[0-9]*',
+          maxLength: 10,
+        }}
+      />
+
+      <Box sx={{ 
+        mt: 2, 
+        p: 2, 
+        bgcolor: '#f8fafc',
+        borderRadius: 1,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2 
+      }}>
+        <Typography
+          sx={{
+            fontFamily: 'monospace',
+            fontSize: '1.5rem',
+            fontWeight: 'bold',
+            letterSpacing: '0.25em',
+            color: '#475569',
+            userSelect: 'none',
+            bgcolor: '#fff',
+            p: 1,
+            borderRadius: 1,
+            border: '1px dashed #cbd5e1'
+          }}
+        >
+          {captchaText}
+        </Typography>
+        <Button
+          size="small"
+          onClick={generateCaptcha}
+          sx={{ 
+            minWidth: 'auto',
+            color: '#64748b',
+            '&:hover': {
+              bgcolor: '#e2e8f0'
+            }
+          }}
+        >
+          ↻
+        </Button>
+      </Box>
+
+      <TextField
+        margin="normal"
+        required
+        fullWidth
+        id="captcha"
+        label="Enter Captcha"
+        name="captcha"
+        value={formData.captcha}
+        onChange={handleChange}
+        error={Boolean(error)}
+        helperText={error}
       />
 
       {error && (
@@ -103,7 +166,7 @@ export default function RepairTrackingForm() {
         type="submit"
         fullWidth
         variant="contained"
-        disabled={loading || !formData.name || !formData.phone}
+        disabled={loading || !formData.phone || !formData.captcha}
         sx={{ mt: 2 }}
       >
         {loading ? <CircularProgress size={24} /> : 'Track Repair'}
