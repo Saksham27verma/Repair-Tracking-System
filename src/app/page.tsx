@@ -84,33 +84,22 @@ export default function HomePage() {
               variant="body1" 
               sx={{ 
                 color: '#64748b',
-                mb: 1.5,
                 fontSize: '1rem',
-              }}
-            >
-              Are you a staff member?
-            </Typography>
-            <Button
-              component={Link}
-              href="/sign-in"
-              variant="contained"
-              size="large"
-              sx={{
-                px: 4,
-                py: 1.5,
-                borderRadius: 2,
-                textTransform: 'none',
-                fontSize: '1.1rem',
-                bgcolor: '#EE6417',
-                color: '#ffffff',
-                boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
-                '&:hover': {
-                  bgcolor: '#e85c0f',
+                '& a': {
+                  color: '#EE6417',
+                  textDecoration: 'none',
+                  fontWeight: 500,
+                  '&:hover': {
+                    textDecoration: 'underline',
+                  },
                 },
               }}
             >
-              Staff Login
-            </Button>
+              Are you a staff member?{' '}
+              <Link href="/sign-in">
+                Login here
+              </Link>
+            </Typography>
           </Box>
         </Box>
       </Container>
