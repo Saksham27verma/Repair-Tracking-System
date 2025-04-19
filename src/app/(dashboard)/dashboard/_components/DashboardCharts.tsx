@@ -61,6 +61,14 @@ export default function DashboardCharts({ statusCounts, dailyCounts }: Dashboard
     router.push(`/dashboard/repairs?status=${encodeURIComponent(status)}`);
   };
 
+  const handleBarClick = (data: any) => {
+    if (data && data.activePayload && data.activePayload[0]) {
+      const clickedDate = data.activePayload[0].payload.date;
+      // Format date for URL: YYYY-MM-DD
+      router.push(`/dashboard/repairs?date=${clickedDate}`);
+    }
+  };
+
   return (
     <>
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -105,13 +113,28 @@ export default function DashboardCharts({ statusCounts, dailyCounts }: Dashboard
         ))}
       </Grid>
 
-      <Paper sx={{ p: 3, mb: 4 }}>
+      <Paper 
+        sx={{ 
+          p: 3, 
+          mb: 4,
+          '&:hover': {
+            boxShadow: '0 8px 20px rgba(0, 0, 0, 0.08)',
+          },
+          transition: 'box-shadow 0.3s ease-in-out',
+        }}
+      >
         <Typography variant="h6" gutterBottom>
           Repairs Over Time
+          <Typography component="span" variant="body2" sx={{ ml: 1, color: 'text.secondary' }}>
+            (Click on a bar to see repairs from that day)
+          </Typography>
         </Typography>
         <Box sx={{ height: 400 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={dailyCounts}>
+            <BarChart 
+              data={dailyCounts}
+              onClick={handleBarClick}
+            >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis
                 dataKey="date"
@@ -133,7 +156,12 @@ export default function DashboardCharts({ statusCounts, dailyCounts }: Dashboard
                   })
                 }
               />
-              <Bar dataKey="count" fill="#EE6417" />
+              <Bar 
+                dataKey="count" 
+                fill="#EE6417" 
+                cursor="pointer"
+                className="clickable-bar"
+              />
             </BarChart>
           </ResponsiveContainer>
         </Box>

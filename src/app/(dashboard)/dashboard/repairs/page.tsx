@@ -11,10 +11,12 @@ import {
   MenuItem,
   Grid,
   InputAdornment,
+  IconButton,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Search as SearchIcon,
+  Clear as ClearIcon,
 } from '@mui/icons-material';
 import {
   DataGrid,
@@ -24,6 +26,7 @@ import {
 } from '@mui/x-data-grid';
 import { supabase } from '@/lib/supabase';
 import { RepairStatus } from '@/types/database';
+import { format } from 'date-fns';
 
 const columns: GridColDef[] = [
   {
@@ -91,11 +94,14 @@ const columns: GridColDef[] = [
 export default function RepairsPage() {
   const searchParams = useSearchParams();
   const statusParam = searchParams.get('status');
+  const dateParam = searchParams.get('date');
   
   const [repairs, setRepairs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(statusParam || 'all');
+  const [dateFilter, setDateFilter] = useState<string>(dateParam || '');
+  const [hasActiveFilters, setHasActiveFilters] = useState(false);
 
   const fetchRepairs = async () => {
     let query = supabase.from('repairs').select('*');
@@ -108,6 +114,17 @@ export default function RepairsPage() {
 
     if (statusFilter !== 'all') {
       query = query.eq('status', statusFilter);
+    }
+
+    if (dateFilter) {
+      // Filter by date - using the created_at column
+      // We need to filter for the entire day, so we add time boundaries
+      const startDate = new Date(dateFilter);
+      const endDate = new Date(dateFilter);
+      endDate.setHours(23, 59, 59, 999);
+      
+      query = query.gte('created_at', startDate.toISOString())
+                   .lte('created_at', endDate.toISOString());
     }
 
     query = query.order('created_at', { ascending: false });
@@ -123,17 +140,41 @@ export default function RepairsPage() {
     setLoading(false);
   };
 
-  // Initialize the filter based on URL params
+  const clearFilters = () => {
+    setStatusFilter('all');
+    setDateFilter('');
+    setSearchQuery('');
+  };
+
+  // Initialize the filters based on URL params
   useEffect(() => {
     if (statusParam) {
       setStatusFilter(statusParam);
     }
-  }, [statusParam]);
+    if (dateParam) {
+      setDateFilter(dateParam);
+    }
+  }, [statusParam, dateParam]);
+
+  // Check if any filters are active
+  useEffect(() => {
+    setHasActiveFilters(statusFilter !== 'all' || dateFilter !== '' || searchQuery !== '');
+  }, [statusFilter, dateFilter, searchQuery]);
 
   // Fetch repairs on mount and when filters change
   useEffect(() => {
     fetchRepairs();
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, statusFilter, dateFilter]);
+
+  // Format date for display
+  const formatDisplayDate = (dateString: string) => {
+    if (!dateString) return '';
+    try {
+      return format(new Date(dateString), 'MMMM d, yyyy');
+    } catch (error) {
+      return dateString;
+    }
+  };
 
   return (
     <Box>
@@ -145,7 +186,14 @@ export default function RepairsPage() {
           mb: 4,
         }}
       >
-        <Typography variant="h4">Repairs</Typography>
+        <Typography variant="h4">
+          Repairs
+          {dateFilter && (
+            <Typography component="span" variant="subtitle1" sx={{ ml: 1, fontWeight: 'normal', color: 'text.secondary' }}>
+              from {formatDisplayDate(dateFilter)}
+            </Typography>
+          )}
+        </Typography>
         <Button
           component={Link}
           href="/dashboard/repairs/new"
@@ -158,7 +206,7 @@ export default function RepairsPage() {
 
       {/* Filters */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid item xs={12} sm={6} md={3}>
           <TextField
             fullWidth
             placeholder="Search repairs..."
@@ -170,10 +218,22 @@ export default function RepairsPage() {
                   <SearchIcon />
                 </InputAdornment>
               ),
+              endAdornment: searchQuery ? (
+                <InputAdornment position="end">
+                  <IconButton 
+                    size="small"
+                    onClick={() => setSearchQuery('')}
+                    edge="end"
+                    aria-label="clear search"
+                  >
+                    <ClearIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
             }}
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid item xs={12} sm={6} md={3}>
           <TextField
             select
             fullWidth
@@ -191,6 +251,44 @@ export default function RepairsPage() {
             <MenuItem value="Completed">Completed</MenuItem>
           </TextField>
         </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <TextField
+            fullWidth
+            type="date"
+            label="Filter by Date"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            InputProps={{
+              endAdornment: dateFilter ? (
+                <InputAdornment position="end">
+                  <IconButton 
+                    size="small"
+                    onClick={() => setDateFilter('')}
+                    edge="end"
+                    aria-label="clear date"
+                  >
+                    <ClearIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+            }}
+          />
+        </Grid>
+        {hasActiveFilters && (
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', alignItems: 'center' }}>
+            <Button 
+              variant="outlined" 
+              color="secondary" 
+              onClick={clearFilters}
+              startIcon={<ClearIcon />}
+              fullWidth
+              sx={{ height: '56px' }}
+            >
+              Clear Filters
+            </Button>
+          </Grid>
+        )}
       </Grid>
 
       <Box sx={{ height: 'calc(100vh - 250px)', width: '100%' }}>
