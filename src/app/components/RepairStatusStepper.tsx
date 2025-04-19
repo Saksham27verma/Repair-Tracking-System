@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Stepper, Step, StepLabel, Box, Tooltip, Typography, styled } from '@mui/material';
+import { Stepper, Step, StepLabel, Box, Tooltip, Typography, styled, useTheme, useMediaQuery } from '@mui/material';
 import { RepairStatus, EstimateStatus } from '@/app/types/database';
 
 // Define the steps for the repair process
@@ -12,6 +12,15 @@ const REPAIR_STEPS: RepairStatus[] = [
   'Ready for Pickup',
   'Completed',
 ];
+
+// Mobile-friendly short labels for small screens
+const MOBILE_STEP_LABELS: Record<RepairStatus, string> = {
+  'Received': 'Received',
+  'Sent to Manufacturer': 'Sent',
+  'Returned from Manufacturer': 'Returned',
+  'Ready for Pickup': 'Ready',
+  'Completed': 'Completed',
+};
 
 // Optional descriptions for each step to display in tooltips
 const STEP_DESCRIPTIONS = {
@@ -34,6 +43,36 @@ const DeclinedStepper = styled(Stepper)(({ theme }) => ({
   }
 }));
 
+// Styled component for mobile responsiveness
+const ResponsiveStepper = styled(Stepper)(({ theme }) => ({
+  [theme.breakpoints.down('sm')]: {
+    '& .MuiStepLabel-iconContainer': {
+      paddingRight: theme.spacing(0.5),
+    },
+    '& .MuiStepLabel-labelContainer': {
+      width: '100%',
+    },
+    '& .MuiStep-root': {
+      padding: '0 4px',
+    },
+  },
+}));
+
+// Styled version of declined stepper for mobile
+const ResponsiveDeclinedStepper = styled(DeclinedStepper)(({ theme }) => ({
+  [theme.breakpoints.down('sm')]: {
+    '& .MuiStepLabel-iconContainer': {
+      paddingRight: theme.spacing(0.5),
+    },
+    '& .MuiStepLabel-labelContainer': {
+      width: '100%',
+    },
+    '& .MuiStep-root': {
+      padding: '0 4px',
+    },
+  },
+}));
+
 interface RepairStatusStepperProps {
   currentStatus: RepairStatus | 'Cancelled';
   showLabels?: boolean;
@@ -49,6 +88,9 @@ export default function RepairStatusStepper({
   withTooltips = true,
   estimateStatus
 }: RepairStatusStepperProps) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
   // Find the index of the current status in the steps array
   const currentStep = REPAIR_STEPS.indexOf(currentStatus as RepairStatus);
   
@@ -61,18 +103,20 @@ export default function RepairStatusStepper({
       case 'small':
         return { py: 0.5, mb: 2 };
       case 'large':
-        return { py: 2, mb: 6 };
+        return isMobile ? { py: 1, mb: 3 } : { py: 2, mb: 6 };
       case 'medium':
       default:
-        return { py: 1, mb: 4 };
+        return isMobile ? { py: 0.5, mb: 2 } : { py: 1, mb: 4 };
     }
   };
 
   // Choose the appropriate stepper based on the repair status
-  const StepperComponent = isDeclined ? DeclinedStepper : Stepper;
+  const StepperComponent = isDeclined 
+    ? (isMobile ? ResponsiveDeclinedStepper : DeclinedStepper)
+    : (isMobile ? ResponsiveStepper : Stepper);
 
   return (
-    <Box sx={{ ...getSizing() }}>
+    <Box sx={{ ...getSizing(), overflow: 'auto' }}>
       {isDeclined && (
         <Box sx={{ mb: 2, p: 2, bgcolor: '#ffebee', borderRadius: 1 }}>
           <Typography variant="subtitle2" color="error">
@@ -97,10 +141,10 @@ export default function RepairStatusStepper({
                 <StepLabel>
                   {showLabels && (
                     <Typography 
-                      variant={size === 'small' ? 'caption' : 'body2'}
-                      sx={{ mt: 0.5 }}
+                      variant={size === 'small' || isMobile ? 'caption' : 'body2'}
+                      sx={{ mt: 0.5, fontSize: isMobile ? '0.65rem' : undefined }}
                     >
-                      {label}
+                      {isMobile ? MOBILE_STEP_LABELS[label] : label}
                     </Typography>
                   )}
                 </StepLabel>
@@ -109,10 +153,10 @@ export default function RepairStatusStepper({
               <StepLabel>
                 {showLabels && (
                   <Typography 
-                    variant={size === 'small' ? 'caption' : 'body2'}
-                    sx={{ mt: 0.5 }}
+                    variant={size === 'small' || isMobile ? 'caption' : 'body2'}
+                    sx={{ mt: 0.5, fontSize: isMobile ? '0.65rem' : undefined }}
                   >
-                    {label}
+                    {isMobile ? MOBILE_STEP_LABELS[label] : label}
                   </Typography>
                 )}
               </StepLabel>

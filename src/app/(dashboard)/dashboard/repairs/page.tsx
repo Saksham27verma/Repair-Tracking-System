@@ -34,6 +34,7 @@ import {
   Refresh as RefreshIcon,
   FilterAlt as FilterIcon,
   CalendarToday as CalendarIcon,
+  Phone as PhoneIcon,
 } from '@mui/icons-material';
 import {
   DataGrid,
@@ -58,7 +59,32 @@ const columns: GridColDef[] = [
     ),
   },
   { field: 'patient_name', headerName: 'Patient Name', width: 200 },
-  { field: 'phone', headerName: 'Phone', width: 150 },
+  { 
+    field: 'phone', 
+    headerName: 'Phone', 
+    width: 150,
+    renderCell: (params) => (
+      <Link 
+        href={`tel:${params.value}`} 
+        style={{ 
+          color: 'inherit', 
+          textDecoration: 'none',
+          display: 'flex',
+          alignItems: 'center'
+        }}
+      >
+        {params.value}
+        <PhoneIcon 
+          fontSize="small" 
+          sx={{ 
+            ml: 0.5, 
+            color: 'primary.main',
+            display: { xs: 'inline-flex', md: 'none' }
+          }} 
+        />
+      </Link>
+    ),
+  },
   { field: 'product_name', headerName: 'Product', width: 200 },
   {
     field: 'status',
@@ -469,7 +495,20 @@ function RepairsContent() {
         )}
       </Grid>
 
-      <Box sx={{ height: 'calc(100vh - 250px)', width: '100%' }}>
+      <Box 
+        sx={{ 
+          height: { xs: 'calc(100vh - 300px)', md: 'calc(100vh - 250px)' }, 
+          width: '100%',
+          '.MuiDataGrid-root': {
+            // Enable horizontal scrolling
+            overflowX: 'auto',
+            // Ensure proper width for all screens
+            width: '100%',
+          },
+          // Make sure the container allows scrolling
+          overflow: 'auto'
+        }}
+      >
         <DataGrid
           rows={repairs}
           columns={columns}
@@ -488,6 +527,32 @@ function RepairsContent() {
           pageSizeOptions={[10, 25, 50, 100]}
           disableRowSelectionOnClick
           getRowId={(row) => row.id}
+          sx={{
+            // Add these styles for better mobile experience
+            '& .MuiDataGrid-cell': {
+              overflow: 'visible',
+              whiteSpace: 'normal',
+              minWidth: '100px',
+            },
+            '& .MuiDataGrid-columnHeader': {
+              minWidth: '100px',
+              whiteSpace: 'normal',
+              lineHeight: '1.2',
+            },
+            // Ensure scrolling works properly on mobile
+            '& .MuiDataGrid-virtualScroller': {
+              overflowX: 'auto',
+            },
+            // Improve scrollbar visibility on mobile
+            '& ::-webkit-scrollbar': {
+              height: '8px',
+              width: '8px',
+            },
+            '& ::-webkit-scrollbar-thumb': {
+              backgroundColor: '#bdbdbd',
+              borderRadius: '4px',
+            },
+          }}
         />
       </Box>
     </Box>

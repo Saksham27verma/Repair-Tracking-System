@@ -81,10 +81,17 @@ export default async function RepairStatusPage({
   const hasEstimate = repair.repair_estimate_by_company && repair.repair_estimate_by_company > 0;
 
   return (
-    <Container maxWidth="lg" sx={{ py: 8 }}>
-      <Paper elevation={3} sx={{ p: 4, borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" gutterBottom>
+    <Container maxWidth="lg" sx={{ py: { xs: 4, md: 8 } }}>
+      <Paper elevation={3} sx={{ p: { xs: 2, sm: 3, md: 4 }, borderRadius: 2 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', sm: 'row' }, 
+          justifyContent: 'space-between', 
+          alignItems: { xs: 'flex-start', sm: 'center' }, 
+          mb: 3,
+          gap: { xs: 2, sm: 0 },
+        }}>
+          <Typography variant="h5" sx={{ fontSize: { xs: '1.5rem', md: '2rem' } }}>
             Repair Status
           </Typography>
           <RefreshButton variant="outlined" size="small" />
@@ -136,7 +143,7 @@ export default async function RepairStatusPage({
           estimateStatus={estimateStatus}
         />
 
-        <Grid container spacing={4}>
+        <Grid container spacing={{ xs: 2, md: 4 }}>
           {/* Patient Information */}
           <Grid item xs={12} md={6}>
             <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
