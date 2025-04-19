@@ -2,9 +2,10 @@ import { Box, Typography } from '@mui/material';
 import { type Database } from '@/app/types/supabase';
 import DashboardCharts from './_components/DashboardCharts';
 import { createServerClient } from '@/lib/supabase/server';
+import { RepairStatus } from '@/app/types/database';
 
 interface StatusCount {
-  status: Database['public']['Enums']['repair_status'];
+  status: RepairStatus | string;
   count: number;
 }
 

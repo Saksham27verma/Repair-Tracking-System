@@ -99,7 +99,7 @@ function getEstimateStatusInfo(status: EstimateStatus | undefined) {
 }
 
 // Create a local formatDate function since we can't import the utils module
-function formatDate(date: string | null) {
+function formatDate(date: string | null | undefined) {
   if (!date) return '-';
   return new Date(date).toLocaleDateString('en-US', {
     weekday: 'long',
@@ -254,7 +254,7 @@ export default async function RepairDetailPage({
               <Typography variant="body2" color="text.secondary">
                 Product Name
               </Typography>
-              <Typography variant="body1">{repair.product_name}</Typography>
+              <Typography variant="body1">{repair.model_item_name}</Typography>
             </Box>
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary">
@@ -289,7 +289,7 @@ export default async function RepairDetailPage({
               <Typography variant="body2" color="text.secondary">
                 Field of Concern
               </Typography>
-              <Typography variant="body1">{repair.foc}</Typography>
+              <Typography variant="body1">{repair.purpose}</Typography>
             </Box>
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary">

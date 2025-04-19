@@ -20,7 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (username: string, password: string) => {
     // For demo purposes, hardcoded credentials
     // In production, this should be properly hashed and stored securely
-    if (username === 'admin' && password === 'admin123') {
+    if (username === 'hope' && password === 'hopeenterprises') {
       localStorage.setItem('authToken', 'demo-token');
       setIsAuthenticated(true);
       return true;

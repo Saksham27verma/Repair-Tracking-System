@@ -31,7 +31,7 @@ export default function CustomerForm({ customer, mode = 'create' }: CustomerForm
   const [formData, setFormData] = useState<CustomerInsert>({
     name: customer?.name || '',
     phone: customer?.phone || '',
-    company: customer?.company || null,
+    company: customer?.company || undefined,
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -59,7 +59,7 @@ export default function CustomerForm({ customer, mode = 'create' }: CustomerForm
       const dataToSubmit: CustomerInsert = {
         name: formData.name,
         phone: formData.phone,
-        company: formData.company || null,
+        company: formData.company || undefined,
       };
 
       if (mode === 'create') {

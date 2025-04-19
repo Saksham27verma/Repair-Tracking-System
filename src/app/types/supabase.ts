@@ -1,143 +1,29 @@
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[];
+import { RepairStatus, EstimateStatus, WarrantyStatus, PaymentMode, Ear, CompanyType, MouldType, RepairRecord, Customer } from './database';
 
-export type Database = {
+export interface Database {
   public: {
     Tables: {
-      customers: {
-        Row: {
-          id: string;
-          name: string;
-          phone: string;
-          company: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          name: string;
-          phone: string;
-          company?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          name?: string;
-          phone?: string;
-          company?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-      };
       repairs: {
-        Row: {
-          id: string;
-          repair_id: string;
-          customer_id: string | null;
-          status: 'Received' | 'Sent to Manufacturer' | 'Returned from Manufacturer' | 'Ready for Pickup' | 'Completed';
-          patient_name: string;
-          phone: string;
-          company: string | null;
-          product_name: string;
-          model_item_name: string;
-          serial_no: string;
-          quantity: number;
-          warranty: 'In Warranty' | 'Out of Warranty' | 'Extended Warranty';
-          foc: string;
-          purpose: string;
-          date_of_receipt: string;
-          date_out_to_manufacturer: string | null;
-          date_received_from_manufacturer: string | null;
-          date_out_to_customer: string | null;
-          repair_estimate_by_company: number | null;
-          estimate_by_us: number | null;
-          customer_paid: number | null;
-          payment_mode: 'Cash' | 'Card' | 'UPI' | 'Bank Transfer' | null;
-          programming_done: boolean;
-          remarks: string | null;
-          created_at: string;
-          updated_at: string;
-          estimate_status?: string | null;
-          estimate_approval_date?: string | null;
-        };
-        Insert: {
-          id?: string;
-          repair_id: string;
-          customer_id?: string | null;
-          status?: 'Received' | 'Sent to Manufacturer' | 'Returned from Manufacturer' | 'Ready for Pickup' | 'Completed';
-          patient_name: string;
-          phone: string;
-          company?: string | null;
-          product_name: string;
-          model_item_name: string;
-          serial_no: string;
-          quantity?: number;
-          warranty: 'In Warranty' | 'Out of Warranty' | 'Extended Warranty';
-          foc: string;
-          purpose: string;
-          date_of_receipt?: string;
-          date_out_to_manufacturer?: string | null;
-          date_received_from_manufacturer?: string | null;
-          date_out_to_customer?: string | null;
-          repair_estimate_by_company?: number | null;
-          estimate_by_us?: number | null;
-          customer_paid?: number | null;
-          payment_mode?: 'Cash' | 'Card' | 'UPI' | 'Bank Transfer' | null;
-          programming_done?: boolean;
-          remarks?: string | null;
-          created_at?: string;
-          updated_at?: string;
-          estimate_status?: string | null;
-          estimate_approval_date?: string | null;
-        };
-        Update: {
-          id?: string;
-          repair_id?: string;
-          customer_id?: string | null;
-          status?: 'Received' | 'Sent to Manufacturer' | 'Returned from Manufacturer' | 'Ready for Pickup' | 'Completed';
-          patient_name?: string;
-          phone?: string;
-          company?: string | null;
-          product_name?: string;
-          model_item_name?: string;
-          serial_no?: string;
-          quantity?: number;
-          warranty?: 'In Warranty' | 'Out of Warranty' | 'Extended Warranty';
-          foc?: string;
-          purpose?: string;
-          date_of_receipt?: string;
-          date_out_to_manufacturer?: string | null;
-          date_received_from_manufacturer?: string | null;
-          date_out_to_customer?: string | null;
-          repair_estimate_by_company?: number | null;
-          estimate_by_us?: number | null;
-          customer_paid?: number | null;
-          payment_mode?: 'Cash' | 'Card' | 'UPI' | 'Bank Transfer' | null;
-          programming_done?: boolean;
-          remarks?: string | null;
-          created_at?: string;
-          updated_at?: string;
-          estimate_status?: string | null;
-          estimate_approval_date?: string | null;
-        };
+        Row: RepairRecord;
+        Insert: Omit<RepairRecord, 'id' | 'created_at'> & { updated_at?: string };
+        Update: Partial<Omit<RepairRecord, 'id' | 'created_at'>>;
+      };
+      customers: {
+        Row: Customer;
+        Insert: Omit<Customer, 'id' | 'created_at' | 'updated_at'> & { updated_at?: string };
+        Update: Partial<Omit<Customer, 'id' | 'created_at'>>;
       };
     };
     Views: {
-      [_ in never]: never;
+      [key: string]: {
+        Row: Record<string, any>;
+      };
     };
     Functions: {
-      [_ in never]: never;
-    };
-    Enums: {
-      repair_status: 'Received' | 'Sent to Manufacturer' | 'Returned from Manufacturer' | 'Ready for Pickup' | 'Completed';
-      warranty_status: 'In Warranty' | 'Out of Warranty' | 'Extended Warranty';
-      payment_mode: 'Cash' | 'Card' | 'UPI' | 'Bank Transfer';
+      [key: string]: {
+        Args: Record<string, any>;
+        Returns: any;
+      };
     };
   };
-}; 
+} 

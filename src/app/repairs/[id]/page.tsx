@@ -200,7 +200,7 @@ export default async function RepairStatusPage({
                   <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
                     Product
                   </Typography>
-                  <Typography variant="body1">{repair.product_name}</Typography>
+                  <Typography variant="body1">{repair.model_item_name}</Typography>
                 </ListItem>
                 <ListItem>
                   <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
@@ -235,7 +235,7 @@ export default async function RepairStatusPage({
                   <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
                     Issue
                   </Typography>
-                  <Typography variant="body1">{repair.foc}</Typography>
+                  <Typography variant="body1">{repair.purpose}</Typography>
                 </ListItem>
                 <ListItem>
                   <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
@@ -321,7 +321,7 @@ export default async function RepairStatusPage({
                     variant="outlined"
                     fullWidth
                     startIcon={<PhoneIcon />}
-                    href="tel:+911234567890"
+                    href="tel:+919811168046"
                     sx={{ py: 1.5 }}
                   >
                     Call Us
@@ -332,7 +332,7 @@ export default async function RepairStatusPage({
                     variant="outlined"
                     fullWidth
                     startIcon={<WhatsAppIcon />}
-                    href="https://wa.me/911234567890"
+                    href="https://wa.me/919811168046"
                     target="_blank"
                     rel="noopener noreferrer"
                     sx={{ py: 1.5 }}
@@ -345,7 +345,7 @@ export default async function RepairStatusPage({
                     variant="outlined"
                     fullWidth
                     startIcon={<EmailIcon />}
-                    href="mailto:support@example.com"
+                    href="mailto:hearinghope@gmail.com"
                     sx={{ py: 1.5 }}
                   >
                     Email Us
