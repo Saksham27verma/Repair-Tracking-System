@@ -26,9 +26,9 @@ export default function RepairTrackingForm() {
 
   // Generate a random captcha text
   const generateCaptcha = () => {
-    const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const chars = '0123456789';
     let result = '';
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 4; i++) {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     setCaptchaText(result);
