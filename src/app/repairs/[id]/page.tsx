@@ -215,12 +215,6 @@ export default async function RepairStatusPage({
                 </ListItem>
                 <ListItem>
                   <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
-                    Model
-                  </Typography>
-                  <Typography variant="body1">{repair.model_item_name}</Typography>
-                </ListItem>
-                <ListItem>
-                  <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
                     Serial No.
                   </Typography>
                   <Typography variant="body1">{repair.serial_no}</Typography>
@@ -231,6 +225,14 @@ export default async function RepairStatusPage({
                   </Typography>
                   <Typography variant="body1">{repair.warranty}</Typography>
                 </ListItem>
+                {repair.warranty_after_repair && (
+                  <ListItem>
+                    <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
+                      Repair Warranty
+                    </Typography>
+                    <Typography variant="body1">{repair.warranty_after_repair}</Typography>
+                  </ListItem>
+                )}
               </List>
             </Paper>
           </Grid>
@@ -244,16 +246,18 @@ export default async function RepairStatusPage({
               <List>
                 <ListItem>
                   <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
-                    Issue
-                  </Typography>
-                  <Typography variant="body1">{repair.purpose}</Typography>
-                </ListItem>
-                <ListItem>
-                  <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
                     Purpose
                   </Typography>
                   <Typography variant="body1">{repair.purpose}</Typography>
                 </ListItem>
+                {repair.receiving_center && (
+                  <ListItem>
+                    <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
+                      Receiving Center
+                    </Typography>
+                    <Typography variant="body1">{repair.receiving_center}</Typography>
+                  </ListItem>
+                )}
                 <ListItem>
                   <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
                     Received Date

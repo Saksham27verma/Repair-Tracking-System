@@ -39,7 +39,9 @@ import {
   PaymentMode,
   CompanyType,
   HEARING_AID_MODELS,
-  RepairRecord
+  RepairRecord,
+  WarrantyAfterRepair,
+  ReceivingCenter
 } from '@/app/types/database';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -104,6 +106,8 @@ interface FormState {
   updated_at?: string;
   ear: EarType;
   mould: MouldType | '';
+  warranty_after_repair: WarrantyAfterRepair | '';
+  receiving_center: ReceivingCenter | '';
 }
 
 interface Props {
@@ -131,6 +135,8 @@ const initialFormData: FormState = {
   estimate_status: 'Not Required',
   ear: null,
   mould: '',
+  warranty_after_repair: '',
+  receiving_center: '',
 };
 
 export default function RepairForm({ repair, mode = 'create' }: Props) {
@@ -181,6 +187,8 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
         updated_at: repair.updated_at,
         ear: repair.ear ? repair.ear.toLowerCase() as EarType : null,
         mould: repair.mould || '',
+        warranty_after_repair: repair.warranty_after_repair || '',
+        receiving_center: repair.receiving_center || '',
       };
     } else {
       // New repair - use defaults + generate ID
@@ -360,13 +368,15 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
         repair_estimate_by_company: formData.repair_estimate, // Store our single estimate in the repair_estimate_by_company field
         estimate_by_us: null, // We're not using this field anymore
         customer_paid: formData.customer_paid,
-        payment_mode: formData.payment_mode || null,
+        payment_mode: formData.payment_mode,
         programming_done: Boolean(formData.programming_done),
         remarks: formData.remarks || null,
         estimate_status: formData.estimate_status,
         updated_at: now,
         ear: formData.ear,
-        mould: formData.mould || null
+        mould: formData.mould || null,
+        warranty_after_repair: formData.warranty_after_repair || null,
+        receiving_center: formData.receiving_center || null
       };
 
       if (mode === 'create') {
@@ -811,6 +821,42 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
               <MenuItem value="Hard Half Concha Mould">Hard Half Concha Mould</MenuItem>
               <MenuItem value="Hard Full Concha Mould">Hard Full Concha Mould</MenuItem>
               <MenuItem value="Other">Other</MenuItem>
+            </TextField>
+          </Grid>
+          
+          {/* New fields for Warranty After Repair and Receiving Center */}
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              select
+              id="warranty_after_repair"
+              label="Warranty After Repair"
+              name="warranty_after_repair"
+              value={formData.warranty_after_repair || ''}
+              onChange={handleChange}
+            >
+              <MenuItem value="">Select Warranty</MenuItem>
+              <MenuItem value="6 months">6 months</MenuItem>
+              <MenuItem value="1 year">1 year</MenuItem>
+              <MenuItem value="None">None</MenuItem>
+            </TextField>
+          </Grid>
+          
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              select
+              id="receiving_center"
+              label="Receiving Center"
+              name="receiving_center"
+              value={formData.receiving_center || ''}
+              onChange={handleChange}
+            >
+              <MenuItem value="">Select Center</MenuItem>
+              <MenuItem value="Rohini">Rohini</MenuItem>
+              <MenuItem value="Green Park">Green Park</MenuItem>
+              <MenuItem value="Indirapuram">Indirapuram</MenuItem>
+              <MenuItem value="Sanjay Nagar">Sanjay Nagar</MenuItem>
             </TextField>
           </Grid>
 

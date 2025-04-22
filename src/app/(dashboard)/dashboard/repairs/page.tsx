@@ -85,7 +85,7 @@ const columns: GridColDef[] = [
       </Link>
     ),
   },
-  { field: 'product_name', headerName: 'Product', width: 200 },
+  { field: 'model_item_name', headerName: 'Product', width: 200 },
   {
     field: 'status',
     headerName: 'Status',
@@ -155,6 +155,20 @@ const columns: GridColDef[] = [
     width: 150,
   },
   {
+    field: 'warranty_after_repair',
+    headerName: 'Repair Warranty',
+    width: 150,
+    valueGetter: (params: GridValueGetterParams) =>
+      params.value || '-',
+  },
+  {
+    field: 'receiving_center',
+    headerName: 'Receiving Center',
+    width: 150,
+    valueGetter: (params: GridValueGetterParams) =>
+      params.value || '-',
+  },
+  {
     field: 'customer_paid',
     headerName: 'Amount Paid',
     width: 130,
@@ -190,7 +204,7 @@ function RepairsContent() {
 
     if (searchQuery) {
       query = query.or(
-        `repair_id.ilike.%${searchQuery}%,patient_name.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%,product_name.ilike.%${searchQuery}%`
+        `repair_id.ilike.%${searchQuery}%,patient_name.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%,model_item_name.ilike.%${searchQuery}%`
       );
     }
 

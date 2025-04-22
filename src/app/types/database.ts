@@ -13,6 +13,10 @@ export type EstimateStatus =
 
 export type WarrantyStatus = '2 years warranty' | '3 years warranty' | '4 years warranty' | 'Out of warranty';
 
+export type WarrantyAfterRepair = '6 months' | '1 year' | 'None';
+
+export type ReceivingCenter = 'Rohini' | 'Green Park' | 'Indirapuram' | 'Sanjay Nagar';
+
 export type PaymentMode = 'Cash' | 'Card' | 'UPI' | 'Bank Transfer';
 
 export type Ear = 'left' | 'right' | 'both';
@@ -349,6 +353,8 @@ export interface RepairRecord {
   ear?: Ear;
   mould?: MouldType;
   purpose: string;
+  warranty_after_repair?: WarrantyAfterRepair;
+  receiving_center?: ReceivingCenter;
   
   // Notification Preferences
   notification_preference?: 'email' | 'sms' | 'both';
