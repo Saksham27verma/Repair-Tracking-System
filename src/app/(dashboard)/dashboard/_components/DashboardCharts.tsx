@@ -14,6 +14,7 @@ import {
   IconButton,
   Tooltip,
   CircularProgress,
+  Chip,
 } from '@mui/material';
 import {
   BarChart,
@@ -26,7 +27,7 @@ import {
 } from 'recharts';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { RefreshRounded } from '@mui/icons-material';
+import { RefreshRounded, AccessTimeFilledRounded } from '@mui/icons-material';
 
 interface StatusCount {
   status: string;
@@ -53,17 +54,21 @@ export default function DashboardCharts({
   const [statusCounts, setStatusCounts] = useState<StatusCount[]>(initialStatusCounts);
   const [dailyCounts, setDailyCounts] = useState<DailyCount[]>(initialDailyCounts);
   const [loading, setLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [refreshCount, setRefreshCount] = useState(0);
 
   const fetchDashboardStats = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/dashboard-stats', {
+      console.log(`Fetching dashboard stats (refresh #${refreshCount + 1})...`);
+      
+      // Use a cache-busting query parameter to ensure fresh data
+      const response = await fetch(`/api/dashboard-stats?refresh=${Date.now()}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
         cache: 'no-store',
-        next: { revalidate: 0 },
       });
 
       if (!response.ok) {
@@ -71,8 +76,12 @@ export default function DashboardCharts({
       }
 
       const data = await response.json();
+      console.log('Received dashboard stats:', data);
+      
       setStatusCounts(data.statusCounts);
       setDailyCounts(data.dailyCounts);
+      setLastUpdated(data.timestamp || new Date().toISOString());
+      setRefreshCount(prev => prev + 1);
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
     } finally {
@@ -81,6 +90,7 @@ export default function DashboardCharts({
   };
 
   useEffect(() => {
+    // Immediate fetch on component mount
     fetchDashboardStats();
     
     // Setup an interval to refresh data every 30 seconds
@@ -121,6 +131,17 @@ export default function DashboardCharts({
     },
   ];
 
+  // Format the last updated time nicely
+  const formatLastUpdated = () => {
+    if (!lastUpdated) return '';
+    try {
+      const date = new Date(lastUpdated);
+      return date.toLocaleTimeString();
+    } catch (error) {
+      return '';
+    }
+  };
+
   const handleCardClick = (status: string) => {
     router.push(`/dashboard/repairs?status=${encodeURIComponent(status)}`);
   };
@@ -159,7 +180,16 @@ export default function DashboardCharts({
 
   return (
     <>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
+        {lastUpdated && (
+          <Chip
+            icon={<AccessTimeFilledRounded fontSize="small" />}
+            label={`Last updated: ${formatLastUpdated()}`}
+            size="small"
+            variant="outlined"
+            sx={{ color: 'text.secondary' }}
+          />
+        )}
         <Tooltip title="Refresh dashboard stats">
           <IconButton 
             onClick={fetchDashboardStats} 
