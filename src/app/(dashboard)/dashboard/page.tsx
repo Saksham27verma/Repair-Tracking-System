@@ -70,6 +70,7 @@ async function getDashboardStats() {
 }
 
 export default async function DashboardPage() {
+  // Get initial stats for server-side rendering (will be quickly replaced by client-side data)
   const { statusCounts, dailyCounts } = await getDashboardStats();
 
   return (
@@ -83,8 +84,8 @@ export default async function DashboardPage() {
         title="Dashboard" 
       />
       <DashboardCharts 
-        statusCounts={statusCounts}
-        dailyCounts={dailyCounts}
+        initialStatusCounts={statusCounts}
+        initialDailyCounts={dailyCounts}
       />
     </div>
   );

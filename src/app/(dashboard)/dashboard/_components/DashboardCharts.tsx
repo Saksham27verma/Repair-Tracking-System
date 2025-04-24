@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Grid,
@@ -11,6 +11,9 @@ import {
   TextField,
   Button,
   Stack,
+  IconButton,
+  Tooltip,
+  CircularProgress,
 } from '@mui/material';
 import {
   BarChart,
@@ -18,21 +21,76 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
 } from 'recharts';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { RefreshRounded } from '@mui/icons-material';
 
-interface DashboardChartsProps {
-  statusCounts: any[];
-  dailyCounts: any[];
+interface StatusCount {
+  status: string;
+  count: number;
 }
 
-export default function DashboardCharts({ statusCounts, dailyCounts }: DashboardChartsProps) {
+interface DailyCount {
+  date: string;
+  count: number;
+}
+
+interface DashboardChartsProps {
+  initialStatusCounts: StatusCount[];
+  initialDailyCounts: DailyCount[];
+}
+
+export default function DashboardCharts({ 
+  initialStatusCounts = [], 
+  initialDailyCounts = [] 
+}: DashboardChartsProps) {
   const router = useRouter();
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [statusCounts, setStatusCounts] = useState<StatusCount[]>(initialStatusCounts);
+  const [dailyCounts, setDailyCounts] = useState<DailyCount[]>(initialDailyCounts);
+  const [loading, setLoading] = useState(false);
+
+  const fetchDashboardStats = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/dashboard-stats', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+        next: { revalidate: 0 },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch dashboard stats');
+      }
+
+      const data = await response.json();
+      setStatusCounts(data.statusCounts);
+      setDailyCounts(data.dailyCounts);
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardStats();
+    
+    // Setup an interval to refresh data every 30 seconds
+    const intervalId = setInterval(() => {
+      fetchDashboardStats();
+    }, 30000);
+    
+    // Clean up interval on component unmount
+    return () => clearInterval(intervalId);
+  }, []);
 
   const statusCards = [
     {
@@ -101,6 +159,22 @@ export default function DashboardCharts({ statusCounts, dailyCounts }: Dashboard
 
   return (
     <>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Tooltip title="Refresh dashboard stats">
+          <IconButton 
+            onClick={fetchDashboardStats} 
+            disabled={loading}
+            color="primary"
+            sx={{ 
+              bgcolor: loading ? 'rgba(0, 0, 0, 0.04)' : 'transparent',
+              '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.08)' }
+            }}
+          >
+            {loading ? <CircularProgress size={24} /> : <RefreshRounded />}
+          </IconButton>
+        </Tooltip>
+      </Box>
+      
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {statusCards.map((card) => (
           <Grid item xs={12} sm={6} md={3} key={card.title}>
@@ -207,7 +281,7 @@ export default function DashboardCharts({ statusCounts, dailyCounts }: Dashboard
                 }
               />
               <YAxis />
-              <Tooltip
+              <RechartsTooltip
                 labelFormatter={(date) =>
                   new Date(date).toLocaleDateString('en-US', {
                     weekday: 'long',
