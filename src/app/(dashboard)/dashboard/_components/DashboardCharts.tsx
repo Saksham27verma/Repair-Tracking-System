@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Grid,
@@ -28,6 +28,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { RefreshRounded, AccessTimeFilledRounded } from '@mui/icons-material';
+import { useAlert } from '@/app/components/AlertProvider';
 
 interface StatusCount {
   status: string;
@@ -49,58 +50,113 @@ export default function DashboardCharts({
   initialDailyCounts = [] 
 }: DashboardChartsProps) {
   const router = useRouter();
+  const { showAlert } = useAlert();
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [statusCounts, setStatusCounts] = useState<StatusCount[]>(initialStatusCounts);
   const [dailyCounts, setDailyCounts] = useState<DailyCount[]>(initialDailyCounts);
   const [loading, setLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [lastUpdated, setLastUpdated] = useState<string>(new Date().toISOString());
   const [refreshCount, setRefreshCount] = useState(0);
+  
+  // Use refs to prevent duplicate fetches
+  const initialFetchDone = useRef(false);
+  const isFetchingRef = useRef(false);
+  const mountedRef = useRef(false);
 
-  const fetchDashboardStats = async () => {
+  // Memoize the fetchDashboardStats function with stricter guards
+  const fetchDashboardStats = useCallback(async (showSuccessMessage = false) => {
+    // Prevent concurrent fetches and respect loading state
+    if (isFetchingRef.current || loading) {
+      console.log('Fetch already in progress, skipping...');
+      return;
+    }
+
+    // Mark fetch as in progress
+    isFetchingRef.current = true;
     setLoading(true);
+    
     try {
-      console.log(`Fetching dashboard stats (refresh #${refreshCount + 1})...`);
+      console.log(`Manually fetching dashboard stats (refresh #${refreshCount + 1})...`);
       
-      // Use a cache-busting query parameter to ensure fresh data
-      const response = await fetch(`/api/dashboard-stats?refresh=${Date.now()}`, {
+      // Use stronger cache-busting method by adding unique timestamp to URL
+      const timestamp = new Date().getTime();
+      const response = await fetch(`/api/dashboard-stats?refresh=${timestamp}&nocache=${Math.random()}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
         },
         cache: 'no-store',
+        next: { revalidate: 0 }
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch dashboard stats');
+        throw new Error(`Failed to fetch dashboard stats: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.log('Received dashboard stats:', data);
+      console.log('Received dashboard stats from manual refresh');
       
-      setStatusCounts(data.statusCounts);
-      setDailyCounts(data.dailyCounts);
-      setLastUpdated(data.timestamp || new Date().toISOString());
-      setRefreshCount(prev => prev + 1);
+      // Only update state if component is still mounted
+      if (mountedRef.current) {
+        // Force a state update even if data looks the same
+        setStatusCounts([...data.statusCounts]);
+        setDailyCounts([...data.dailyCounts]);
+        setLastUpdated(data.timestamp || new Date().toISOString());
+        setRefreshCount(prev => prev + 1);
+        
+        if (showSuccessMessage) {
+          showAlert('Dashboard refreshed successfully', 'success');
+        }
+      }
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
+      if (mountedRef.current) {
+        showAlert('Failed to refresh dashboard data. Please try again.', 'error');
+      }
     } finally {
-      setLoading(false);
+      // Reset flags if component is still mounted
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+      isFetchingRef.current = false;
     }
-  };
+  }, [refreshCount, showAlert, loading]);
+
+  // Handle manual refresh button click - the ONLY way to refresh
+  const handleRefreshClick = useCallback(() => {
+    if (!loading && !isFetchingRef.current) {
+      fetchDashboardStats(true); // Show success message on manual refresh
+    }
+  }, [fetchDashboardStats, loading]);
 
   useEffect(() => {
-    // Immediate fetch on component mount
-    fetchDashboardStats();
+    // Set mounted flag
+    mountedRef.current = true;
     
-    // Setup an interval to refresh data every 30 seconds
-    const intervalId = setInterval(() => {
-      fetchDashboardStats();
-    }, 30000);
+    // Initial data fetch (ONLY once)
+    if (!initialFetchDone.current && !isFetchingRef.current) {
+      initialFetchDone.current = true;
+      
+      // If we have initial data from server, don't fetch again
+      if (initialStatusCounts.length > 0 || initialDailyCounts.length > 0) {
+        console.log('Using server-provided initial data instead of fetching');
+        setLastUpdated(new Date().toISOString());
+      } else {
+        console.log('No initial data, performing one-time fetch');
+        fetchDashboardStats();
+      }
+    }
     
-    // Clean up interval on component unmount
-    return () => clearInterval(intervalId);
-  }, []);
+    // Cleanup
+    return () => {
+      console.log('Dashboard component unmounted - cleaning up');
+      mountedRef.current = false;
+    };
+  }, []); // Empty dependency array - run ONLY once on mount
 
   const statusCards = [
     {
@@ -190,19 +246,17 @@ export default function DashboardCharts({
             sx={{ color: 'text.secondary' }}
           />
         )}
-        <Tooltip title="Refresh dashboard stats">
-          <IconButton 
-            onClick={fetchDashboardStats} 
-            disabled={loading}
-            color="primary"
-            sx={{ 
-              bgcolor: loading ? 'rgba(0, 0, 0, 0.04)' : 'transparent',
-              '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.08)' }
-            }}
-          >
-            {loading ? <CircularProgress size={24} /> : <RefreshRounded />}
-          </IconButton>
-        </Tooltip>
+        {/* Use a regular button instead of IconButton for better visibility */}
+        <Button
+          onClick={handleRefreshClick}
+          disabled={loading}
+          variant="contained"
+          color="primary"
+          startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <RefreshRounded />}
+          sx={{ minWidth: '120px' }}
+        >
+          {loading ? 'Refreshing...' : 'Refresh'}
+        </Button>
       </Box>
       
       <Grid container spacing={3} sx={{ mb: 4 }}>

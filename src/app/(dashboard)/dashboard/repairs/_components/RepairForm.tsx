@@ -277,6 +277,23 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
         throw new Error(`Required fields missing: ${missingFields.join(', ')}`);
       }
 
+      // Check for connectivity before proceeding
+      try {
+        // Simple connection check
+        const connCheck = await fetch('/api/health-check', { 
+          method: 'HEAD',
+          cache: 'no-store',
+          signal: AbortSignal.timeout(3000) // 3-second timeout
+        });
+        
+        if (!connCheck.ok) {
+          throw new Error('API server is not responding');
+        }
+      } catch (connErr) {
+        console.error('Connection check failed:', connErr);
+        throw new Error('Unable to connect to the server. Please check your internet connection and try again.');
+      }
+
       // First, create or update the customer
       const customerData = {
         name: formData.patient_name,
@@ -293,169 +310,234 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
       }
 
       // Check if customer exists
-      const { data: existingCustomer, error: searchError } = await supabase
-        .from('customers')
-        .select('id, name, phone, email')
-        .eq('phone', formData.phone)
-        .maybeSingle();
-
-      if (searchError) {
-        console.error('Error searching for customer:', searchError);
-        throw new Error(`Error checking for existing customer: ${searchError.message}`);
-      }
-
-      let customerId;
-      
-      if (existingCustomer) {
-        console.log('Found existing customer:', existingCustomer);
-        // Update existing customer
-        const { data: updatedCustomer, error: updateError } = await supabase
-          .from('customers')
-          .update(customerData)
-          .eq('id', existingCustomer.id)
-          .select()
-          .single();
-
-        if (updateError) {
-          console.error('Error updating customer:', updateError);
-          throw new Error(`Failed to update customer: ${updateError.message}`);
-        }
-
-        customerId = existingCustomer.id;
-      } else {
-        console.log('No existing customer found, creating new customer');
-        // Create new customer
-        const { data: newCustomer, error: insertError } = await supabase
-          .from('customers')
-          .insert([customerData])
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error('Error creating customer:', insertError);
-          throw new Error(`Failed to create customer: ${insertError.message}`);
-        }
-
-        if (!newCustomer) {
-          throw new Error('Customer creation returned no data');
-        }
-
-        customerId = newCustomer.id;
-      }
-
-      if (!customerId) {
-        throw new Error('Failed to get customer ID after create/update');
-      }
-
-      console.log('Proceeding with customer ID:', customerId);
-
-      // Ensure date fields are in proper format
-      const now = new Date().toISOString();
-      const dateOfReceipt = formData.date_of_receipt || now;
-
-      // Prepare database object
-      const dbData = {
-        customer_id: customerId,
-        patient_name: formData.patient_name,
-        phone: formData.phone,
-        email: formData.email,
-        company: formData.company || null,
-        model_item_name: formData.model_item_name,
-        serial_no: formData.serial_no,
-        quantity: Number(formData.quantity) || 1,
-        warranty: formData.warranty,
-        purpose: formData.purpose,
-        repair_estimate_by_company: formData.repair_estimate, // Store our single estimate in the repair_estimate_by_company field
-        estimate_by_us: null, // We're not using this field anymore
-        customer_paid: formData.customer_paid,
-        payment_mode: formData.payment_mode,
-        programming_done: Boolean(formData.programming_done),
-        remarks: formData.remarks || null,
-        estimate_status: formData.estimate_status,
-        updated_at: now,
-        ear: formData.ear,
-        mould: formData.mould || null,
-        warranty_after_repair: formData.warranty_after_repair || null,
-        receiving_center: formData.receiving_center || null
-      };
-
-      if (mode === 'create') {
-        // Add fields specific to creation
-        const createData = {
-          ...dbData,
-          repair_id: formData.repair_id,
-          status: 'Received', // Always start with Received
-          date_of_receipt: dateOfReceipt,
-          created_at: now
-        };
+      try {
+        console.log('Checking if customer exists with phone:', formData.phone);
         
-        console.log('Creating repair with data:', createData);
-
-        const { error: repairError } = await supabase
-          .from('repairs')
-          .insert([createData]);
-
-        if (repairError) {
-          console.error('Error creating repair:', repairError);
-          // Show more detailed error information
-          console.log('Error details:', repairError.details, repairError.hint, repairError.code);
-          throw new Error(`Failed to create repair: ${repairError.message}${repairError.details ? ` (${repairError.details})` : ''}`);
+        // Try to connect to Supabase with timeout
+        let existingCustomer, searchError;
+        
+        try {
+          // Add timeout to Supabase query
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Database connection timeout')), 5000)
+          );
+          
+          const queryPromise = supabase
+            .from('customers')
+            .select('id, name, phone, email')
+            .eq('phone', formData.phone)
+            .maybeSingle();
+            
+          // Race between the query and timeout
+          const result = await Promise.race([queryPromise, timeoutPromise]);
+          existingCustomer = result.data;
+          searchError = result.error;
+        } catch (timeoutErr) {
+          console.error('Supabase query timed out:', timeoutErr);
+          throw new Error('Database connection timed out. Please try again.');
         }
-        
-        showAlert('Repair created successfully', 'success');
-      } else {
-        // Add fields specific to updates
-        const updateData = {
-          ...dbData,
-          status: formData.status,
-          date_out_to_manufacturer: formData.date_out_to_manufacturer,
-          date_received_from_manufacturer: formData.date_received_from_manufacturer,
-          date_out_to_customer: formData.date_out_to_customer
-        };
-        
-        console.log('Updating repair with data:', updateData);
 
-        const { error: repairError } = await supabase
-          .from('repairs')
-          .update(updateData)
-          .eq('id', repair?.id);
-
-        if (repairError) {
-          console.error('Error updating repair:', repairError);
-          throw new Error(`Failed to update repair: ${repairError.message}`);
+        if (searchError) {
+          console.error('Error searching for customer in database:', searchError);
+          throw new Error(`Database error: ${searchError.message}`);
         }
+
+        let customerId;
         
-        if (repair?.repair_id) {
+        if (existingCustomer) {
+          console.log('Found existing customer:', existingCustomer);
+          // Update existing customer
           try {
-            await fetch(`/api/cache-invalidate?repair_id=${repair.repair_id}`, {
-              method: 'POST',
-              cache: 'no-store',
-            });
-          } catch (cacheError) {
-            console.error('Failed to invalidate cache, but repair was updated:', cacheError);
+            const { data: updatedCustomer, error: updateError } = await supabase
+              .from('customers')
+              .update(customerData)
+              .eq('id', existingCustomer.id)
+              .select()
+              .single();
+
+            if (updateError) {
+              console.error('Error updating customer:', updateError);
+              throw new Error(`Failed to update customer: ${updateError.message}`);
+            }
+
+            customerId = existingCustomer.id;
+          } catch (updateErr) {
+            console.error('Error during customer update:', updateErr);
+            if (updateErr.message?.includes('Failed to fetch')) {
+              throw new Error('Network connection lost. Please check your internet and try again.');
+            }
+            throw new Error(`Failed to update customer: ${updateErr.message || 'Unknown error'}`);
+          }
+        } else {
+          console.log('No existing customer found, creating new customer');
+          // Create new customer
+          try {
+            const { data: newCustomer, error: insertError } = await supabase
+              .from('customers')
+              .insert([customerData])
+              .select()
+              .single();
+
+            if (insertError) {
+              console.error('Error creating customer:', insertError);
+              throw new Error(`Failed to create customer: ${insertError.message}`);
+            }
+
+            if (!newCustomer) {
+              throw new Error('Customer creation returned no data');
+            }
+
+            customerId = newCustomer.id;
+          } catch (createErr) {
+            console.error('Error during customer creation:', createErr);
+            if (createErr.message?.includes('Failed to fetch')) {
+              throw new Error('Network connection lost. Please check your internet and try again.');
+            }
+            throw new Error(`Failed to create customer: ${createErr.message || 'Unknown error'}`);
           }
         }
-        
-        showAlert('Repair updated successfully', 'success');
-      }
 
-      // If status was changed, send notification
-      if (statusChanged) {
-        try {
-          await fetch('/api/status-change-notification', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(statusChanged),
-          });
-        } catch (notificationError) {
-          console.error('Failed to send status change notification, but repair was updated:', notificationError);
+        if (!customerId) {
+          throw new Error('Failed to get customer ID after create/update');
         }
-      }
 
-      router.push('/dashboard/repairs');
-      router.refresh();
+        console.log('Proceeding with customer ID:', customerId);
+        
+        // Ensure date fields are in proper format
+        const now = new Date().toISOString();
+        const dateOfReceipt = formData.date_of_receipt || now;
+
+        // Prepare database object
+        const dbData = {
+          customer_id: customerId,
+          patient_name: formData.patient_name,
+          phone: formData.phone,
+          email: formData.email,
+          company: formData.company || null,
+          model_item_name: formData.model_item_name,
+          serial_no: formData.serial_no,
+          quantity: Number(formData.quantity) || 1,
+          warranty: formData.warranty,
+          purpose: formData.purpose,
+          repair_estimate_by_company: formData.repair_estimate, // Store our single estimate in the repair_estimate_by_company field
+          estimate_by_us: null, // We're not using this field anymore
+          customer_paid: formData.customer_paid,
+          payment_mode: formData.payment_mode,
+          programming_done: Boolean(formData.programming_done),
+          remarks: formData.remarks || null,
+          estimate_status: formData.estimate_status,
+          updated_at: now,
+          ear: formData.ear,
+          mould: formData.mould || null,
+          warranty_after_repair: formData.warranty_after_repair || null,
+          receiving_center: formData.receiving_center || null
+        };
+
+        if (mode === 'create') {
+          // Add fields specific to creation
+          const createData = {
+            ...dbData,
+            repair_id: formData.repair_id,
+            status: 'Received', // Always start with Received
+            date_of_receipt: dateOfReceipt,
+            created_at: now
+          };
+          
+          console.log('Creating repair with data:', createData);
+
+          const { error: repairError } = await supabase
+            .from('repairs')
+            .insert([createData]);
+
+          if (repairError) {
+            console.error('Error creating repair:', repairError);
+            // Show more detailed error information
+            console.log('Error details:', repairError.details, repairError.hint, repairError.code);
+            throw new Error(`Failed to create repair: ${repairError.message}${repairError.details ? ` (${repairError.details})` : ''}`);
+          }
+          
+          showAlert('Repair created successfully', 'success');
+        } else {
+          // Add fields specific to updates
+          const updateData = {
+            ...dbData,
+            status: formData.status,
+            date_out_to_manufacturer: formData.date_out_to_manufacturer,
+            date_received_from_manufacturer: formData.date_received_from_manufacturer,
+            date_out_to_customer: formData.date_out_to_customer
+          };
+          
+          console.log('Updating repair with data:', updateData);
+
+          const { error: repairError } = await supabase
+            .from('repairs')
+            .update(updateData)
+            .eq('id', repair?.id);
+
+          if (repairError) {
+            console.error('Error updating repair:', repairError);
+            throw new Error(`Failed to update repair: ${repairError.message}`);
+          }
+          
+          if (repair?.repair_id) {
+            try {
+              // More aggressive cache invalidation approach
+              console.log('Invalidating cache for repair:', repair.repair_id);
+              
+              // 1. Call our cache invalidation API
+              const cacheResponse = await fetch(`/api/cache-invalidate?repair_id=${repair.repair_id}&id=${repair.id}`, {
+                method: 'POST',
+                cache: 'no-store',
+                headers: {
+                  'Cache-Control': 'no-cache, no-store, must-revalidate',
+                  'Pragma': 'no-cache',
+                }
+              });
+              
+              if (!cacheResponse.ok) {
+                console.warn('Cache invalidation API returned non-200 status:', cacheResponse.status);
+              }
+              
+              // 2. Force refresh dashboard stats data
+              await fetch(`/api/dashboard-stats?refresh=${Date.now()}&force=true`, {
+                method: 'GET',
+                cache: 'no-store',
+                headers: {
+                  'Cache-Control': 'no-cache, no-store, must-revalidate',
+                  'Pragma': 'no-cache',
+                },
+              });
+              
+              console.log('Cache invalidation and dashboard refresh completed');
+            } catch (cacheError) {
+              console.error('Failed to invalidate cache, but repair was updated:', cacheError);
+            }
+          }
+          
+          showAlert('Repair updated successfully', 'success');
+        }
+
+        // If status was changed, send notification
+        if (statusChanged) {
+          try {
+            await fetch('/api/status-change-notification', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(statusChanged),
+            });
+          } catch (notificationError) {
+            console.error('Failed to send status change notification, but repair was updated:', notificationError);
+          }
+        }
+
+        router.push('/dashboard/repairs');
+        router.refresh();
+      } catch (customerErr) {
+        console.error('Customer processing error:', customerErr);
+        throw new Error(`Customer lookup failed: ${customerErr.message || 'Connection error. Please check your internet connection and try again.'}`);
+      }
     } catch (err) {
       console.error('Error in form submission:', err);
       setError(
