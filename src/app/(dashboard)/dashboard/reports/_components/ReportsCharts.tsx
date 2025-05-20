@@ -123,7 +123,7 @@ export default function ReportsCharts({
                 ₹{totalProfit.toLocaleString()}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                (Cash Received - Company Billing to Hope)
+                (Cash Received - Company Billing to Hope - Courier Expenses)
               </Typography>
             </Paper>
           </Grid>
@@ -241,7 +241,7 @@ export default function ReportsCharts({
               ₹{totalProfit.toLocaleString()}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              (Cash Received - Company Billing to Hope)
+              (Cash Received - Company Billing to Hope - Courier Expenses)
             </Typography>
           </Paper>
         </Grid>

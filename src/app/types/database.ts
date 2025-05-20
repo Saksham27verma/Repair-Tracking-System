@@ -371,6 +371,7 @@ export interface RepairRecord {
   customer_paid?: number;
   payment_mode?: PaymentMode;
   company_billing_to_hope?: number;
+  courier_expenses?: number;
   
   // Estimate Approval
   estimate_status?: EstimateStatus;

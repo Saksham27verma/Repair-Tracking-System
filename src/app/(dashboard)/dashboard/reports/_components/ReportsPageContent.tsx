@@ -33,7 +33,7 @@ export default function ReportsPageContent() {
         // Fetch repairs data
         const { data: repairs, error } = await supabase
           .from('repairs')
-          .select('status, created_at, customer_paid, warranty, company_billing_to_hope');
+          .select('status, created_at, customer_paid, warranty, company_billing_to_hope, courier_expenses');
 
         if (error) throw error;
 
@@ -63,7 +63,8 @@ export default function ReportsPageContent() {
         const profit = repairs.reduce((sum, repair) => {
           const customerPaid = repair.customer_paid || 0;
           const companyBilling = repair.company_billing_to_hope || 0;
-          return sum + (customerPaid - companyBilling);
+          const courierExpenses = repair.courier_expenses || 0;
+          return sum + (customerPaid - companyBilling - courierExpenses);
         }, 0);
 
         // Process repairs by warranty status

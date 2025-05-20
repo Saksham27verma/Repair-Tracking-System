@@ -96,6 +96,7 @@ interface FormState {
   customer_paid: number | null;
   payment_mode: PaymentMode | null;
   company_billing_to_hope: number | null;
+  courier_expenses: number | null;
   programming_done: boolean;
   remarks: string;
   estimate_status: EstimateStatus;
@@ -132,6 +133,7 @@ const initialFormData: FormState = {
   customer_paid: null,
   payment_mode: null,
   company_billing_to_hope: null,
+  courier_expenses: null,
   programming_done: false,
   remarks: '',
   estimate_status: 'Not Required',
@@ -179,6 +181,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
         customer_paid: repair.customer_paid ?? null,
         payment_mode: repair.payment_mode || null,
         company_billing_to_hope: repair.company_billing_to_hope ?? null,
+        courier_expenses: repair.courier_expenses ?? null,
         programming_done: repair.programming_done !== undefined ? repair.programming_done : false,
         remarks: repair.remarks || '',
         estimate_status: (repair.estimate_status as EstimateStatus) || 'Not Required',
@@ -427,6 +430,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
           customer_paid: formData.customer_paid,
           payment_mode: formData.payment_mode,
           company_billing_to_hope: formData.company_billing_to_hope,
+          courier_expenses: formData.courier_expenses,
           programming_done: Boolean(formData.programming_done),
           remarks: formData.remarks || null,
           estimate_status: formData.estimate_status,
@@ -816,6 +820,17 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                   label="Company Billing to Hope"
                   name="company_billing_to_hope"
                   value={formData.company_billing_to_hope || ''}
+                  onChange={handleChange}
+                  InputProps={{ inputProps: { min: 0, step: 0.01 } }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Courier Expenses"
+                  name="courier_expenses"
+                  value={formData.courier_expenses || ''}
                   onChange={handleChange}
                   InputProps={{ inputProps: { min: 0, step: 0.01 } }}
                 />
