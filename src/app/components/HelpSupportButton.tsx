@@ -26,7 +26,7 @@ interface HelpSupportButtonProps {
 }
 
 export default function HelpSupportButton({ 
-  phoneNumber = '+919811168046', 
+  phoneNumber = '+919711871168', 
   email = 'hearinghope@gmail.com' 
 }: HelpSupportButtonProps) {
   const [open, setOpen] = useState(false);
