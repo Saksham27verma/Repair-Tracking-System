@@ -34,6 +34,7 @@ interface ReportsChartsProps {
   repairsByStatus: RepairsByStatus[];
   repairsByWarranty: RepairsByWarranty[];
   totalRevenue: number;
+  totalProfit: number;
 }
 
 const RADIAN = Math.PI / 180;
@@ -58,7 +59,8 @@ const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, per
 export default function ReportsCharts({ 
   repairsByStatus, 
   repairsByWarranty, 
-  totalRevenue 
+  totalRevenue,
+  totalProfit 
 }: ReportsChartsProps) {
   const COLORS = ['#EE6417', '#3aa986', '#2196f3', '#f44336', '#9c27b0'];
 
@@ -108,6 +110,20 @@ export default function ReportsCharts({
               </Typography>
               <Typography variant="h3" color="success.main">
                 ₹{totalRevenue.toLocaleString()}
+              </Typography>
+            </Paper>
+          </Grid>
+          
+          <Grid item xs={12}>
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Generated from Repairs
+              </Typography>
+              <Typography variant="h3" color="success.main">
+                ₹{totalProfit.toLocaleString()}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                (Cash Received - Company Billing to Hope)
               </Typography>
             </Paper>
           </Grid>
@@ -212,6 +228,20 @@ export default function ReportsCharts({
             </Typography>
             <Typography variant="h3" color="success.main">
               ₹{totalRevenue.toLocaleString()}
+            </Typography>
+          </Paper>
+        </Grid>
+        
+        <Grid item xs={12}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Generated from Repairs
+            </Typography>
+            <Typography variant="h3" color="success.main">
+              ₹{totalProfit.toLocaleString()}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              (Cash Received - Company Billing to Hope)
             </Typography>
           </Paper>
         </Grid>

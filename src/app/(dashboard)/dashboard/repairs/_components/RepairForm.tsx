@@ -95,6 +95,7 @@ interface FormState {
   repair_estimate: number | null;
   customer_paid: number | null;
   payment_mode: PaymentMode | null;
+  company_billing_to_hope: number | null;
   programming_done: boolean;
   remarks: string;
   estimate_status: EstimateStatus;
@@ -130,6 +131,7 @@ const initialFormData: FormState = {
   repair_estimate: null,
   customer_paid: null,
   payment_mode: null,
+  company_billing_to_hope: null,
   programming_done: false,
   remarks: '',
   estimate_status: 'Not Required',
@@ -176,6 +178,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
         repair_estimate: repair.repair_estimate_by_company || repair.estimate_by_us || null,
         customer_paid: repair.customer_paid ?? null,
         payment_mode: repair.payment_mode || null,
+        company_billing_to_hope: repair.company_billing_to_hope ?? null,
         programming_done: repair.programming_done !== undefined ? repair.programming_done : false,
         remarks: repair.remarks || '',
         estimate_status: (repair.estimate_status as EstimateStatus) || 'Not Required',
@@ -423,6 +426,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
           estimate_by_us: null, // We're not using this field anymore
           customer_paid: formData.customer_paid,
           payment_mode: formData.payment_mode,
+          company_billing_to_hope: formData.company_billing_to_hope,
           programming_done: Boolean(formData.programming_done),
           remarks: formData.remarks || null,
           estimate_status: formData.estimate_status,
@@ -801,6 +805,17 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                   label="Amount Paid"
                   name="customer_paid"
                   value={formData.customer_paid || ''}
+                  onChange={handleChange}
+                  InputProps={{ inputProps: { min: 0, step: 0.01 } }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Company Billing to Hope"
+                  name="company_billing_to_hope"
+                  value={formData.company_billing_to_hope || ''}
                   onChange={handleChange}
                   InputProps={{ inputProps: { min: 0, step: 0.01 } }}
                 />

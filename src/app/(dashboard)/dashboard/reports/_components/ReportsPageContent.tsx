@@ -22,6 +22,7 @@ export default function ReportsPageContent() {
   const [repairsByStatus, setRepairsByStatus] = useState<RepairsByStatus[]>([]);
   const [repairsByWarranty, setRepairsByWarranty] = useState<RepairsByWarranty[]>([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const [totalProfit, setTotalProfit] = useState(0);
 
   useEffect(() => {
     async function fetchReportsData() {
@@ -32,7 +33,7 @@ export default function ReportsPageContent() {
         // Fetch repairs data
         const { data: repairs, error } = await supabase
           .from('repairs')
-          .select('status, created_at, customer_paid, warranty');
+          .select('status, created_at, customer_paid, warranty, company_billing_to_hope');
 
         if (error) throw error;
 
@@ -58,6 +59,13 @@ export default function ReportsPageContent() {
           return sum + (repair.customer_paid || 0);
         }, 0);
 
+        // Calculate total profit (Generated from Repairs)
+        const profit = repairs.reduce((sum, repair) => {
+          const customerPaid = repair.customer_paid || 0;
+          const companyBilling = repair.company_billing_to_hope || 0;
+          return sum + (customerPaid - companyBilling);
+        }, 0);
+
         // Process repairs by warranty status
         const warrantyCounts = repairs.reduce((acc, repair) => {
           const status = repair.warranty;
@@ -73,6 +81,7 @@ export default function ReportsPageContent() {
         setRepairsByStatus(statusData);
         setRepairsByWarranty(warrantyData);
         setTotalRevenue(revenue);
+        setTotalProfit(profit);
       } catch (err) {
         console.error('Error fetching reports data:', err);
         setError(err instanceof Error ? err.message : 'An error occurred while loading reports');
@@ -106,6 +115,7 @@ export default function ReportsPageContent() {
         repairsByStatus={repairsByStatus}
         repairsByWarranty={repairsByWarranty}
         totalRevenue={totalRevenue}
+        totalProfit={totalProfit}
       />
     </Box>
   );

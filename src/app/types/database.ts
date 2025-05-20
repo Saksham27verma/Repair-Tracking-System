@@ -370,6 +370,7 @@ export interface RepairRecord {
   estimate_by_us?: number;
   customer_paid?: number;
   payment_mode?: PaymentMode;
+  company_billing_to_hope?: number;
   
   // Estimate Approval
   estimate_status?: EstimateStatus;
