@@ -21,7 +21,7 @@ interface PasswordProtectionProps {
 
 // This should be replaced with a more secure solution in production
 // Ideally, the password should be stored securely and validated on the server
-const ADMIN_PASSWORD = 'repair-admin-2023';
+const ADMIN_PASSWORD = 'Saksham27*';
 
 export default function PasswordProtection({ children, protectedAreaName }: PasswordProtectionProps) {
   const [password, setPassword] = useState('');
