@@ -1,5 +1,8 @@
+'use client';
+
 import dynamic from 'next/dynamic';
 import { Box, CircularProgress } from '@mui/material';
+import PasswordProtection from '@/app/components/PasswordProtection';
 
 // Dynamically import the reports page component with no SSR
 const DynamicReportsPage = dynamic(
@@ -15,5 +18,12 @@ const DynamicReportsPage = dynamic(
 );
 
 export default function ReportsPage() {
-  return <DynamicReportsPage />;
+  return (
+    <PasswordProtection 
+      protectedAreaName="reports-admin"
+      key={Date.now()}
+    >
+      <DynamicReportsPage />
+    </PasswordProtection>
+  );
 } 

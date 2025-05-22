@@ -1,3 +1,5 @@
+'use client';
+
 import { Box, Typography } from '@mui/material';
 import RepairForm from '../../_components/RepairForm';
 import { supabase } from '@/lib/supabase';

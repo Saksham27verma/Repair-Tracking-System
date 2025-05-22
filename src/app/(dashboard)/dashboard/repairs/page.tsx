@@ -588,7 +588,10 @@ function RepairsContent() {
 export default function RepairsPage() {
   return (
     <Suspense fallback={<LoadingSpinner />}>
-      <RepairsContent />
+      <Box sx={{ p: 4 }}>
+        <PageHeader title="Repairs" />
+        <RepairsContent />
+      </Box>
     </Suspense>
   );
 } 
