@@ -166,11 +166,11 @@ export default function DashboardCharts({
       status: 'Received',
     },
     {
-      title: 'With Manufacturer',
+      title: 'With Company',
       count:
-        statusCounts.find((s) => s.status === 'Sent to Manufacturer')?.count || 0,
+        statusCounts.find((s) => s.status === 'Sent to Company for Repair')?.count || 0,
       color: '#3aa986',
-      status: 'Sent to Manufacturer',
+      status: 'Sent to Company for Repair',
     },
     {
       title: 'Ready for Pickup',

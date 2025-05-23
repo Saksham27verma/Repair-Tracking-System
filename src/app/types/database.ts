@@ -1,6 +1,6 @@
 export type RepairStatus =
   | 'Received'
-  | 'Sent to Manufacturer'
+  | 'Sent to Company for Repair'
   | 'Returned from Manufacturer'
   | 'Ready for Pickup'
   | 'Completed';
@@ -395,7 +395,7 @@ export interface Customer {
 
 export interface DashboardStats {
   active_repairs: number;
-  awaiting_manufacturer: number;
+  sent_to_company: number;
   ready_for_pickup: number;
   completed_repairs: number;
   overdue_repairs: number;
