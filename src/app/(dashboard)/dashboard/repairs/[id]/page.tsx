@@ -289,12 +289,6 @@ export default async function RepairDetailPage({
             </Typography>
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                Field of Concern
-              </Typography>
-              <Typography variant="body1">{repair.purpose}</Typography>
-            </Box>
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" color="text.secondary">
                 Purpose
               </Typography>
               <Typography variant="body1">{repair.purpose}</Typography>

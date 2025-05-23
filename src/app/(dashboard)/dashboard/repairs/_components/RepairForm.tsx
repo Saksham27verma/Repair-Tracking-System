@@ -117,6 +117,19 @@ interface Props {
   mode?: 'create' | 'edit';
 }
 
+// Predefined repair purpose options
+const repairPurposeOptions = [
+  'Hearing aid is physically damaged',
+  'Sound from the hearing aid is unclear or distorted',
+  'Hearing aid is not connecting with external devices',
+  'Ear hook is loose, broken, or needs replacement',
+  'General maintenance or servicing is required',
+  'Hearing aid is not charging properly',
+  'Hearing aid turns off automatically',
+  'Hearing aid is not turning on',
+  'Other (please specify)'
+];
+
 const initialFormData: FormState = {
   repair_id: '',
   status: 'Received',
@@ -158,9 +171,20 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
     }
   }, [mode]);
   
+  // State for custom purpose
+  const [customPurpose, setCustomPurpose] = useState<string>('');
+  const [isCustomPurpose, setIsCustomPurpose] = useState<boolean>(false);
+
   // Initialize form state with proper types
   const [formData, setFormData] = useState<FormState>(() => {
     if (repair) {
+      // Check if the repair purpose is in our predefined options
+      const isPredefinedPurpose = repairPurposeOptions.includes(repair.purpose);
+      if (!isPredefinedPurpose && repair.purpose) {
+        setCustomPurpose(repair.purpose);
+        setIsCustomPurpose(true);
+      }
+      
       return {
         // Initialize with default values first
         ...initialFormData,
@@ -215,6 +239,35 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
     setFormData((prev) => ({
       ...prev,
       [name]: value,
+    }));
+  };
+
+  // Handle purpose selection change
+  const handlePurposeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    
+    if (value === 'Other (please specify)') {
+      setIsCustomPurpose(true);
+      setFormData(prev => ({
+        ...prev,
+        purpose: customPurpose || ''
+      }));
+    } else {
+      setIsCustomPurpose(false);
+      setFormData(prev => ({
+        ...prev,
+        purpose: value
+      }));
+    }
+  };
+
+  // Handle custom purpose input change
+  const handleCustomPurposeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setCustomPurpose(value);
+    setFormData(prev => ({
+      ...prev,
+      purpose: value
     }));
   };
 
@@ -788,14 +841,34 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                 <TextField
                   required
                   fullWidth
+                  select
                   label="Purpose"
-                  name="purpose"
-                  value={formData.purpose || ''}
-                  onChange={handleChange}
-                  multiline
-                  rows={3}
-                />
+                  name="purpose_select"
+                  value={isCustomPurpose ? 'Other (please specify)' : formData.purpose}
+                  onChange={handlePurposeChange}
+                >
+                  {repairPurposeOptions.map((option) => (
+                    <MenuItem key={option} value={option}>
+                      {option}
+                    </MenuItem>
+                  ))}
+                </TextField>
               </Grid>
+              
+              {isCustomPurpose && (
+                <Grid item xs={12}>
+                  <TextField
+                    required
+                    fullWidth
+                    label="Custom Purpose"
+                    name="custom_purpose"
+                    value={customPurpose}
+                    onChange={handleCustomPurposeChange}
+                    multiline
+                    rows={3}
+                  />
+                </Grid>
+              )}
             </Grid>
           </Grid>
 

@@ -29,3 +29,6 @@ $$;
 SELECT column_name, data_type 
 FROM information_schema.columns 
 WHERE table_name = 'repairs';
+
+-- Remove the Field of Concern column from the repairs table
+ALTER TABLE repairs DROP COLUMN IF EXISTS foc;
