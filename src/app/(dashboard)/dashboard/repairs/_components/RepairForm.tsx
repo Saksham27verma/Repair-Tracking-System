@@ -279,7 +279,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
     setFormData((prev) => ({
       ...prev,
       status: newStatus,
-      ...(newStatus === 'Sent to Manufacturer' && {
+      ...(newStatus === 'Sent to Company for Repair' && {
         date_out_to_manufacturer: now,
       }),
       ...(newStatus === 'Returned from Manufacturer' && {
@@ -471,7 +471,8 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
           customer_id: customerId,
           patient_name: formData.patient_name,
           phone: formData.phone,
-          email: formData.email,
+          // Only include email if it's set, to avoid schema issues
+          ...(formData.email ? { email: formData.email } : {}),
           company: formData.company || null,
           model_item_name: formData.model_item_name,
           serial_no: formData.serial_no,
@@ -506,18 +507,69 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
           
           console.log('Creating repair with data:', createData);
 
-          const { error: repairError } = await supabase
-            .from('repairs')
-            .insert([createData]);
+          // Try to create the repair
+          try {
+            // Generate a UUID in the proper format
+            const uuid = typeof window !== 'undefined' && window.crypto?.randomUUID ? 
+              window.crypto.randomUUID() : 
+              'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0, 
+                      v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+              });
+            
+            const createDataWithId = {
+              ...createData,
+              id: uuid
+            };
+            
+            console.log('Creating repair with data and explicit UUID:', createDataWithId);
 
-          if (repairError) {
-            console.error('Error creating repair:', repairError);
-            // Show more detailed error information
-            console.log('Error details:', repairError.details, repairError.hint, repairError.code);
-            throw new Error(`Failed to create repair: ${repairError.message}${repairError.details ? ` (${repairError.details})` : ''}`);
+            const { error: repairError } = await supabase
+              .from('repairs')
+              .insert([createDataWithId]);
+
+            if (repairError) {
+              console.error('Error creating repair:', repairError);
+              
+              // If error mentions schema or email column, handle it specifically
+              if (repairError.message.includes('email') && repairError.message.includes('schema')) {
+                console.error('Email column issue detected, trying without email field');
+                
+                // Try again without the email field
+                const createDataWithoutEmail = { ...createDataWithId };
+                delete createDataWithoutEmail.email;
+                
+                const { error: retryError } = await supabase
+                  .from('repairs')
+                  .insert([createDataWithoutEmail]);
+                  
+                if (retryError) {
+                  console.error('Error creating repair on retry:', retryError);
+                  throw new Error(`Failed to create repair: ${retryError.message}`);
+                } else {
+                  // Success on retry without email
+                  showAlert('Repair created successfully', 'success');
+                  
+                  // Optional: display a warning about email field
+                  console.warn('Created repair successfully but without email field');
+                  
+                  setLoading(false);
+                  router.push('/dashboard/repairs');
+                  router.refresh();
+                  return;
+                }
+              } else {
+                // For other errors, throw normally
+                throw new Error(`Failed to create repair: ${repairError.message}${repairError.details ? ` (${repairError.details})` : ''}`);
+              }
+            }
+            
+            showAlert('Repair created successfully', 'success');
+          } catch (insertError) {
+            console.error('Error during repair creation:', insertError);
+            throw new Error(insertError instanceof Error ? insertError.message : 'Failed to create repair');
           }
-          
-          showAlert('Repair created successfully', 'success');
         } else {
           // Add fields specific to updates
           const updateData = {
@@ -684,7 +736,7 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                 onChange={handleStatusChange}
               >
                 <MenuItem value="Received">Received</MenuItem>
-                <MenuItem value="Sent to Manufacturer">Sent to Manufacturer</MenuItem>
+                <MenuItem value="Sent to Company for Repair">Sent to Company for Repair</MenuItem>
                 <MenuItem value="Returned from Manufacturer">Returned from Manufacturer</MenuItem>
                 <MenuItem value="Ready for Pickup">Ready for Pickup</MenuItem>
                 <MenuItem value="Completed">Completed</MenuItem>

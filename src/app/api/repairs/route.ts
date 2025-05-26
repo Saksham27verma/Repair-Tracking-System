@@ -6,6 +6,9 @@ import { notifyUser } from '@/lib/notifications';
 
 export async function POST(request: Request) {
   try {
+    // Refresh the schema cache to ensure all columns are recognized
+    await refreshSchemaCache('repairs');
+    
     const supabase = createServerClient();
     const data = await request.json();
     
