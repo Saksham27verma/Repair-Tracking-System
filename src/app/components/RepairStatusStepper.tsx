@@ -7,29 +7,28 @@ import { RepairStatus, EstimateStatus } from '@/app/types/database';
 // Define the steps for the repair process
 const REPAIR_STEPS: RepairStatus[] = [
   'Received',
-  'Sent to Manufacturer',
+  'Sent to Company for Repair',
   'Returned from Manufacturer',
   'Ready for Pickup',
-  'Completed',
+  'Completed'
 ];
 
 // Mobile-friendly short labels for small screens
 const MOBILE_STEP_LABELS: Record<RepairStatus, string> = {
   'Received': 'Received',
-  'Sent to Manufacturer': 'Sent',
+  'Sent to Company for Repair': 'Sent',
   'Returned from Manufacturer': 'Returned',
   'Ready for Pickup': 'Ready',
-  'Completed': 'Completed',
+  'Completed': 'Completed'
 };
 
 // Optional descriptions for each step to display in tooltips
-const STEP_DESCRIPTIONS = {
+const STEP_DESCRIPTIONS: Record<RepairStatus, string> = {
   'Received': 'Your device has been received by our service center',
-  'Sent to Manufacturer': 'Your device has been sent to the manufacturer for repair',
+  'Sent to Company for Repair': 'Your device has been sent to the company for specialized repair',
   'Returned from Manufacturer': 'Your device has been returned from the manufacturer',
   'Ready for Pickup': 'Your device is repaired and ready for pickup',
-  'Completed': 'The repair process is complete and your device has been returned',
-  'Cancelled': 'Your repair request has been cancelled',
+  'Completed': 'The repair process is complete and your device has been returned'
 };
 
 // Create a styled version of Stepper for declined repairs
@@ -123,9 +122,20 @@ export default function RepairStatusStepper({
             Repair Cancelled
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {currentStatus === 'Sent to Manufacturer' 
+            {currentStatus === 'Sent to Company for Repair' 
               ? "We'll notify you when your device is returned from the manufacturer." 
               : "Your repair request has been cancelled."}
+          </Typography>
+        </Box>
+      )}
+      
+      {currentStatus === 'Ready for Pickup' && !isDeclined && (
+        <Box sx={{ mb: 2, p: 2, bgcolor: '#e8f5e9', borderRadius: 1 }}>
+          <Typography variant="subtitle2" color="success.main">
+            Your device is ready for pickup
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Please pick up your device within 1 month. The company will not be liable for any losses after this period.
           </Typography>
         </Box>
       )}

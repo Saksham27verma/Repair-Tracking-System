@@ -39,7 +39,7 @@ type RepairRecord = Database['public']['Tables']['repairs']['Row'] & {
 
 const REPAIR_STEPS: RepairStatus[] = [
   'Received',
-  'Sent to Manufacturer',
+  'Sent to Company for Repair',
   'Returned from Manufacturer',
   'Ready for Pickup',
   'Completed',
@@ -109,7 +109,7 @@ export default async function RepairStatusPage({
         </Box>
 
         {/* Show estimate approval UI if there's a pending estimate */}
-        {hasEstimate && estimateStatus === 'Pending' && repair.status === 'Sent to Manufacturer' && (
+        {hasEstimate && estimateStatus === 'Pending' && repair.status === 'Sent to Company for Repair' && (
           <EstimateApproval 
             repairId={repair.repair_id} 
             estimate={repair.repair_estimate_by_company || 0} 
@@ -135,9 +135,9 @@ export default async function RepairStatusPage({
               <Typography variant="body1" fontWeight="medium">
                 {estimateStatus === 'Approved' 
                   ? 'You approved the repair estimate.' 
-                  : estimateStatus === 'Declined' && repair.status === 'Sent to Manufacturer'
+                  : estimateStatus === 'Declined' && repair.status === 'Sent to Company for Repair'
                     ? 'You declined the repair estimate. We will notify you when your device is returned from the manufacturer.'
-                    : 'You declined the repair estimate. Your repair request has been cancelled.'}
+                    : 'You declined the repair estimate. We will contact you about returning your device.'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Estimate: ₹{repair.repair_estimate_by_company}

@@ -53,7 +53,7 @@ function getStatusColor(status: string) {
   switch (status) {
     case 'Received':
       return 'primary';
-    case 'Sent to Manufacturer':
+    case 'Sent to Company for Repair':
       return 'warning';
     case 'Returned from Manufacturer':
       return 'info';
@@ -361,7 +361,7 @@ export default async function RepairDetailPage({
             </Box>
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                Sent to Manufacturer
+                Sent to Company
               </Typography>
               <Typography variant="body1">
                 {formatDate(repair.date_out_to_manufacturer)}
@@ -369,7 +369,7 @@ export default async function RepairDetailPage({
             </Box>
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                Received from Manufacturer
+                Returned from Manufacturer
               </Typography>
               <Typography variant="body1">
                 {formatDate(repair.date_received_from_manufacturer)}

@@ -93,7 +93,7 @@ const columns: GridColDef[] = [
     renderCell: (params) => {
       const statusColors: Record<RepairStatus, string> = {
         'Received': '#EE6417',
-        'Sent to Manufacturer': '#ff9800',
+        'Sent to Company for Repair': '#ff9800',
         'Returned from Manufacturer': '#2196f3',
         'Ready for Pickup': '#3aa986',
         'Completed': '#4caf50',
@@ -413,10 +413,8 @@ function RepairsContent() {
           >
             <MenuItem value="all">All Statuses</MenuItem>
             <MenuItem value="Received">Received</MenuItem>
-            <MenuItem value="Sent to Manufacturer">Sent to Manufacturer</MenuItem>
-            <MenuItem value="Returned from Manufacturer">
-              Returned from Manufacturer
-            </MenuItem>
+            <MenuItem value="Sent to Company for Repair">Sent to Company for Repair</MenuItem>
+            <MenuItem value="Returned from Manufacturer">Returned from Manufacturer</MenuItem>
             <MenuItem value="Ready for Pickup">Ready for Pickup</MenuItem>
             <MenuItem value="Completed">Completed</MenuItem>
           </TextField>
