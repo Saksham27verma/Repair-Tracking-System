@@ -127,6 +127,7 @@ const repairPurposeOptions = [
   'Hearing aid is not charging properly',
   'Hearing aid turns off automatically',
   'Hearing aid is not turning on',
+  'Reshelling of Machine',
   'Other (please specify)'
 ];
 
