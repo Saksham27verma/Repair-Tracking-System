@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Helvetica, Arial, sans-serif; color: #1A202C; margin: 0; padding: 0; line-height: 1.4; }
+    .receipt-page { max-width: 800px; margin: 0 auto; padding: 25px; background: #fff; }
+    .brand-red { color: #A80000; }
+    .text-light { color: #4A5568; font-size: 11px; }
+    .text-muted { color: #718096; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+    .header-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+    .company-name { font-size: 20px; font-weight: 700; margin: 0; text-transform: uppercase; letter-spacing: -0.5px; }
+    .document-type { font-size: 10px; font-weight: 700; color: #A80000; text-transform: uppercase; letter-spacing: 2px; border: 1px solid #A80000; padding: 3px 10px; display: inline-block; margin-bottom: 5px; }
+    .meta-grid { width: 100%; border-collapse: collapse; margin-bottom: 15px; border-top: 1px solid #EDF2F7; padding-top: 15px; }
+    .meta-grid td { vertical-align: top; padding: 0; width: 100%; }
+    .label { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #A0AEC0; margin-bottom: 2px; }
+    .order-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+    .order-table th { border-bottom: 1px solid #1A202C; padding: 8px 10px; text-align: left; font-size: 10px; text-transform: uppercase; font-weight: 700; color: #4A5568; }
+    .order-table td { border-bottom: 1px solid #EDF2F7; padding: 12px 10px; vertical-align: top; font-size: 13px; }
+    .intake-info-box { background: #FFF5F5; border: 1px solid #FED7D7; padding: 12px; border-radius: 4px; margin-bottom: 15px; }
+    .intake-info-table { width: 100%; border-collapse: collapse; }
+    .intake-info-table td { text-align: center; padding: 4px 8px; border-right: 1px solid #FED7D7; vertical-align: top; }
+    .intake-info-table td:last-child { border-right: none; }
+    .stat-label { font-size: 9px; text-transform: uppercase; color: #C53030; font-weight: 700; letter-spacing: 0.5px; }
+    .stat-val { font-size: 14px; font-weight: 700; color: #1A202C; display: block; margin-top: 2px; }
+    .security-summary { width: 100%; border: 1px solid #EDF2F7; margin-bottom: 15px; border-collapse: collapse; }
+    .security-header { background: #F9FAFB; padding: 6px 15px; border-bottom: 1px solid #EDF2F7; font-size: 10px; font-weight: 700; text-transform: uppercase; color: #4A5568; }
+    .security-row td { padding: 8px 15px; font-size: 13px; border-bottom: 1px solid #EDF2F7; }
+    .security-label { color: #718096; width: 45%; }
+    .security-value { font-weight: 700; text-align: right; }
+    .protocol-box { margin-top: 10px; }
+    .protocol-title { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #A80000; margin-bottom: 5px; }
+    .protocol-text { font-size: 11px; color: #4A5568; line-height: 1.5; }
+    .warning-text { color: #A80000; font-weight: 700; }
+    .terms-footer { margin-top: 20px; font-size: 9px; color: #A0AEC0; border-top: 1px dashed #EDF2F7; padding-top: 10px; text-align: center; }
+    .digital-disclaimer { font-size: 9px; color: #A0AEC0; margin-top: 8px; font-style: italic; font-weight: 500; }
+    .tracking-box { background: #F7FAFC; border: 1px dashed #CBD5E0; padding: 10px 12px; margin-top: 12px; text-align: left; }
+    .tracking-id { font-size: 16px; font-weight: 700; color: #A80000; letter-spacing: 1px; }
+  </style>
+</head>
+<body>
+  <div class="receipt-page">
+    <table class="header-table">
+      <tr>
+        <td width="65%">
+          <img src="{{LOGO_SRC}}" style="width: 110px; margin-bottom: 5px;" alt="Logo"><br>
+          <h1 class="company-name brand-red">{{COMPANY_NAME}}</h1>
+          <div class="text-light">
+            {{COMPANY_ADDRESS}}<br>
+            <strong>Contact:</strong> {{COMPANY_PHONE}} | <strong>Web:</strong> {{COMPANY_WEBSITE}}
+          </div>
+        </td>
+        <td width="35%" style="text-align: right; vertical-align: top;">
+          <div class="document-type">{{DOCUMENT_TYPE}}</div>
+          <div style="font-size: 12px; margin-top: 5px; line-height: 1.6;">
+            <span class="text-muted">Issue Date:</span> <strong>{{RECEIPT_DATE}}</strong><br>
+            <span class="text-muted">Receipt No:</span> <strong>{{RECEIPT_NUMBER}}</strong>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <table class="meta-grid">
+      <tr>
+        <td>
+          <div class="label">Patient Information</div>
+          <div style="font-weight: 700; font-size: 14px;">{{PATIENT_NAME}}</div>
+          <div class="text-light">{{PATIENT_CONTACT}}</div>
+        </td>
+      </tr>
+    </table>
+
+    <div class="intake-info-box">
+      <table class="intake-info-table">
+        <tr>
+          <td>
+            <span class="stat-label">Receiving Center</span>
+            <span class="stat-val">{{RECEIVING_CENTER}}</span>
+          </td>
+          <td>
+            <span class="stat-label">Warranty Status</span>
+            <span class="stat-val">{{WARRANTY_STATUS}}</span>
+          </td>
+          <td>
+            <span class="stat-label">Manufacturer</span>
+            <span class="stat-val" style="color: #A80000;">{{MANUFACTURER}}</span>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <table class="order-table">
+      <thead>
+        <tr>
+          <th width="50%">Model Name / Description</th>
+          <th width="20%">Ear</th>
+          <th width="30%">Serial Number (S/N)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{DEVICE_ROWS}}
+      </tbody>
+    </table>
+
+    <table class="security-summary">
+      <tr>
+        <td class="security-header" colspan="2">Intake Summary</td>
+      </tr>
+      {{INTAKE_SUMMARY_ROWS}}
+    </table>
+
+    <div class="protocol-box">
+      <div class="protocol-title">{{TERMS_TITLE}}</div>
+      <div class="protocol-text">
+        <ul style="padding-left: 15px; margin-top: 5px;">
+          {{TERMS_ITEMS}}
+        </ul>
+      </div>
+    </div>
+
+    <div class="terms-footer">
+      <div class="tracking-box">
+        <div class="text-light" style="margin-bottom: 6px;">{{TRACKING_INSTRUCTIONS}}</div>
+        <div>Your Repair Tracking ID: <span class="tracking-id">{{REPAIR_ID}}</span></div>
+      </div>
+      <div class="digital-disclaimer">{{FOOTER_DISCLAIMER}}</div>
+      <div style="letter-spacing: 1px; font-weight: 700; color: #E2E8F0; margin-top: 10px; text-transform: uppercase;">
+        {{FOOTER_TAG}}
+      </div>
+    </div>
+  </div>
+</body>
+</html>
