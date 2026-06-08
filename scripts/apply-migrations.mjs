@@ -82,6 +82,10 @@ async function bootstrapAppliedMigrations(client) {
     versions.push('20240702000001_add_invoice_cgst_sgst');
   }
 
+  if (await columnExists(client, 'repairs', 'visit_number')) {
+    versions.push('20240703000000_add_repair_visit_number');
+  }
+
   return versions;
 }
 

@@ -387,6 +387,8 @@ export interface RepairRecord {
   status: RepairStatus;
   
   // Customer Information
+  customer_id?: string;
+  visit_number?: number;
   patient_name: string;
   phone: string;
   email?: string;

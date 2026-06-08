@@ -31,7 +31,7 @@ async function getCustomerWithRepairs(id: string) {
       .from('repairs')
       .select('*')
       .eq('customer_id', id)
-      .order('created_at', { ascending: false }),
+      .order('visit_number', { ascending: true }),
   ])
 
   if (!customer) {
@@ -132,6 +132,20 @@ export default async function CustomerDetailsPage({
               )}
               <ListItem>
                 <ListItemText
+                  primary="Total Visits"
+                  secondary={repairs.length}
+                  primaryTypographyProps={{
+                    color: 'text.secondary',
+                    variant: 'body2',
+                  }}
+                  secondaryTypographyProps={{
+                    color: 'text.primary',
+                    variant: 'body1',
+                  }}
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemText
                   primary="Customer Since"
                   secondary={new Date(customer.created_at).toLocaleDateString(
                     'en-US',
@@ -199,11 +213,27 @@ export default async function CustomerDetailsPage({
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
+                            gap: 1,
                           }}
                         >
-                          <Typography variant="body1" color="primary">
-                            {repair.repair_id}
-                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                bgcolor: 'secondary.main',
+                                color: 'white',
+                                px: 1,
+                                py: 0.25,
+                                borderRadius: 1,
+                                fontWeight: 600,
+                              }}
+                            >
+                              Visit {repair.visit_number ?? index + 1}
+                            </Typography>
+                            <Typography variant="body1" color="primary">
+                              {repair.repair_id}
+                            </Typography>
+                          </Box>
                           <Typography
                             variant="body2"
                             sx={{
@@ -221,7 +251,7 @@ export default async function CustomerDetailsPage({
                       secondary={
                         <>
                           <Typography variant="body2" color="text.secondary">
-                            {repair.product_name} - {repair.model_item_name}
+                            {repair.model_item_name}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
                             {new Date(repair.created_at).toLocaleDateString(

@@ -67,6 +67,12 @@ const columns: GridColDef[] = [
       </Link>
     ),
   },
+  {
+    field: 'visit_number',
+    headerName: 'Visit',
+    width: 80,
+    valueGetter: (params: GridValueGetterParams) => params.value ?? '-',
+  },
   { field: 'patient_name', headerName: 'Patient Name', width: 200 },
   { 
     field: 'phone', 

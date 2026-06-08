@@ -22,8 +22,9 @@ type Customer = Database['public']['Tables']['customers']['Row']
 type Repair = Database['public']['Tables']['repairs']['Row']
 
 interface CustomerWithRepair extends Customer {
+  total_visits: number;
   latest_repair?: {
-    product_name: string;
+    model_item_name: string;
   };
 }
 
@@ -41,11 +42,12 @@ export function CustomersList({ customers, isLoading = false }: CustomersListPro
 
   const exportToCSV = () => {
     // Convert customers data to CSV format
-    const headers = ['Name', 'Phone', 'Latest Product']
+    const headers = ['Name', 'Phone', 'Total Visits', 'Latest Product']
     const csvData = customers.map(customer => [
       customer.name,
       customer.phone,
-      customer.latest_repair?.product_name || '-'
+      customer.total_visits,
+      customer.latest_repair?.model_item_name || '-'
     ])
 
     // Add headers to the beginning of the CSV data
@@ -101,13 +103,14 @@ export function CustomersList({ customers, isLoading = false }: CustomersListPro
             <TableRow>
               <TableCell sx={{ fontWeight: 600, bgcolor: 'grey.100' }}>Name</TableCell>
               <TableCell sx={{ fontWeight: 600, bgcolor: 'grey.100' }}>Phone</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: 'grey.100' }}>Total Visits</TableCell>
               <TableCell sx={{ fontWeight: 600, bgcolor: 'grey.100' }}>Latest Product</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={3} align="center" sx={{ py: 8 }}>
+                <TableCell colSpan={4} align="center" sx={{ py: 8 }}>
                   <CircularProgress />
                 </TableCell>
               </TableRow>
@@ -126,12 +129,13 @@ export function CustomersList({ customers, isLoading = false }: CustomersListPro
                     <Typography color="primary.main">{customer.name}</Typography>
                   </TableCell>
                   <TableCell>{customer.phone}</TableCell>
-                  <TableCell>{customer.latest_repair?.product_name || '-'}</TableCell>
+                  <TableCell>{customer.total_visits}</TableCell>
+                  <TableCell>{customer.latest_repair?.model_item_name || '-'}</TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={3} align="center" sx={{ py: 8 }}>
+                <TableCell colSpan={4} align="center" sx={{ py: 8 }}>
                   <Typography color="text.secondary">
                     No customers found
                   </Typography>

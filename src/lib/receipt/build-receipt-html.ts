@@ -78,6 +78,9 @@ function buildDeviceRows(repair: BuildReceiptHtmlInput['repair']): string {
 
 function buildSummaryRows(repair: BuildReceiptHtmlInput['repair']): string {
   const rows = [
+    repair.visit_number
+      ? { label: 'Repair Visit:', value: `Visit ${repair.visit_number}` }
+      : null,
     { label: 'Purpose / Complaint:', value: repair.purpose },
     repair.mould ? { label: 'Mould Type:', value: repair.mould } : null,
     repair.programming_done ? { label: 'Programming Done at Intake:', value: 'Yes' } : null,

@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { Box, Grid, Typography } from '@mui/material';
 import { getFreshSupabaseClient } from '@/lib/supabase';
 import { EstimateStatus } from '@/app/types/database';
@@ -26,6 +27,19 @@ async function getRepair(id: string) {
 
   if (error || !repair) return null;
   return repair;
+}
+
+async function getCustomerVisitCount(customerId: string | null | undefined) {
+  if (!customerId) return 0;
+
+  const freshClient = getFreshSupabaseClient();
+  const { count, error } = await freshClient
+    .from('repairs')
+    .select('id', { count: 'exact', head: true })
+    .eq('customer_id', customerId);
+
+  if (error) return 0;
+  return count ?? 0;
 }
 
 function formatDate(date: string | null | undefined) {
@@ -61,6 +75,7 @@ export default async function RepairDetailPage({
   const repair = await getRepair(params.id);
   if (!repair) notFound();
 
+  const totalVisits = await getCustomerVisitCount(repair.customer_id);
   const estimateStatus = repair.estimate_status as EstimateStatus | undefined;
   const hasEstimate = repair.repair_estimate_by_company && repair.repair_estimate_by_company > 0;
   const autoDownloadReceipt = searchParams?.receipt === '1';
@@ -91,6 +106,26 @@ export default async function RepairDetailPage({
             <InfoRow label="Phone" value={repair.phone} />
             <InfoRow label="Email" value={repair.email} />
             <InfoRow label="Company" value={repair.company} />
+            {repair.visit_number != null && (
+              <InfoRow
+                label="Repair Visit"
+                value={
+                  totalVisits > 0
+                    ? `Visit ${repair.visit_number} of ${totalVisits}`
+                    : `Visit ${repair.visit_number}`
+                }
+              />
+            )}
+            {repair.customer_id && totalVisits > 0 && (
+              <Box sx={{ mt: 1 }}>
+                <Link
+                  href={`/dashboard/customers/${repair.customer_id}`}
+                  style={{ color: '#EE6417', fontWeight: 600, fontSize: '0.875rem' }}
+                >
+                  View all {totalVisits} visit{totalVisits !== 1 ? 's' : ''}
+                </Link>
+              </Box>
+            )}
           </ContentCard>
         </Grid>
         <Grid item xs={12} md={6}>

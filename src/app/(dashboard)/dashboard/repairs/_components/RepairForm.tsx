@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Box,
@@ -25,10 +25,13 @@ import {
   CircularProgress,
   InputAdornment,
   Autocomplete,
-  Tabs,
-  Tab,
   Divider,
+  LinearProgress,
+  Chip,
+  Stack,
+  IconButton,
 } from '@mui/material';
+import { Add as AddIcon, Close as CloseIcon } from '@mui/icons-material';
 import CenterSelect from '@/app/components/CenterSelect';
 import { getMovementForStatusChange } from '@/lib/tracking';
 // Comment out problematic import and use direct imports from database.ts
@@ -45,12 +48,15 @@ import {
   CompanyType,
   HEARING_AID_MODELS,
   RepairRecord,
+  Customer,
   WarrantyAfterRepair,
   ReceivingCenter,
   DeviceFormat,
 } from '@/app/types/database';
 import { inferDeviceFormat } from '@/lib/device-format';
 import { calculateTaxFromInclusive, formatCurrency, GST_RATE_OPTIONS } from '@/lib/invoice-tax';
+import { getCustomerVisitStatsByPhone, type CustomerVisitStats } from '@/lib/customer-visits';
+import Link from 'next/link';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -130,6 +136,7 @@ interface FormState {
 interface Props {
   repair?: RepairRecord;
   mode?: 'create' | 'edit';
+  prefillCustomer?: Customer;
 }
 
 // Predefined repair purpose options
@@ -179,9 +186,186 @@ const initialFormData: FormState = {
   manufacturer_invoice_gst_rate: 18,
 };
 
-export default function RepairForm({ repair, mode = 'create' }: Props) {
+const FORM_SECTIONS = [
+  { title: 'Customer', subtitle: 'Patient contact details' },
+  { title: 'Device & Repair', subtitle: 'Device information and repair purpose' },
+  { title: 'Center Tracking', subtitle: 'Where the device was received' },
+  { title: 'Financial', subtitle: 'Invoices, markup, and payment' },
+  { title: 'Notes', subtitle: 'Programming status and remarks' },
+] as const;
+
+function isCustomerSectionValid(formData: FormState): boolean {
+  return Boolean(formData.patient_name?.trim()) && (formData.phone?.trim().length ?? 0) >= 10;
+}
+
+function isDeviceSectionValid(
+  formData: FormState,
+  isCustomPurpose: boolean,
+  customPurpose: string
+): boolean {
+  const hasPurpose = isCustomPurpose
+    ? Boolean(customPurpose?.trim())
+    : Boolean(formData.purpose?.trim());
+  const hasSerial =
+    formData.device_format === 'kit'
+      ? Boolean(formData.serial_no?.trim()) && Boolean(formData.serial_no_2?.trim())
+      : Boolean(formData.serial_no?.trim());
+  return (
+    Boolean(formData.model_item_name?.trim()) &&
+    hasSerial &&
+    Boolean(formData.warranty) &&
+    hasPurpose
+  );
+}
+
+function isTrackingSectionValid(formData: FormState): boolean {
+  return Boolean(formData.receiving_center_id?.trim());
+}
+
+function getMaxUnlockedSection(
+  formData: FormState,
+  isCustomPurpose: boolean,
+  customPurpose: string
+): number {
+  if (!isCustomerSectionValid(formData)) return 0;
+  if (!isDeviceSectionValid(formData, isCustomPurpose, customPurpose)) return 1;
+  if (!isTrackingSectionValid(formData)) return 2;
+  return FORM_SECTIONS.length - 1;
+}
+
+interface RepairVisitTab {
+  id: string;
+  formData: FormState;
+  customPurpose: string;
+  isCustomPurpose: boolean;
+  seenSections: boolean[];
+}
+
+type CustomerFields = Pick<FormState, 'patient_name' | 'phone' | 'email' | 'company'>;
+
+function createNewVisitTab(
+  savedEmail: string,
+  customer?: Customer,
+  customerFields?: CustomerFields
+): RepairVisitTab {
+  return {
+    id: nanoid(),
+    formData: {
+      ...initialFormData,
+      repair_id: generateRepairId(),
+      email: customer?.email || customerFields?.email || savedEmail,
+      patient_name: customer?.name || customerFields?.patient_name || '',
+      phone: customer?.phone || customerFields?.phone || '',
+      company: (customer?.company as CompanyType) || customerFields?.company || '',
+    },
+    customPurpose: '',
+    isCustomPurpose: false,
+    seenSections: [true, false, false, false, false],
+  };
+}
+
+function isVisitTabComplete(tab: RepairVisitTab): boolean {
+  return (
+    isCustomerSectionValid(tab.formData) &&
+    isDeviceSectionValid(tab.formData, tab.isCustomPurpose, tab.customPurpose) &&
+    isTrackingSectionValid(tab.formData) &&
+    tab.seenSections.every(Boolean)
+  );
+}
+
+function syncCustomerFields(formData: FormState, fields: CustomerFields): FormState {
+  return {
+    ...formData,
+    patient_name: fields.patient_name,
+    phone: fields.phone,
+    email: fields.email,
+    company: fields.company,
+  };
+}
+
+function getCustomerQuote(tabFormData: FormState): number {
+  const invoiceTotal = Number(tabFormData.manufacturer_invoice_total) || 0;
+  const markup = Number(tabFormData.hope_markup) || 0;
+  if (invoiceTotal <= 0 && markup <= 0) return 0;
+  return Math.round((invoiceTotal + markup) * 100) / 100;
+}
+
+function buildRepairDbData(tabFormData: FormState, customerId: string) {
+  const now = new Date().toISOString();
+  const dateOfReceipt = tabFormData.date_of_receipt || now;
+  const customerQuote = getCustomerQuote(tabFormData);
+
+  return {
+    dbData: {
+      customer_id: customerId,
+      patient_name: tabFormData.patient_name,
+      phone: tabFormData.phone,
+      ...(tabFormData.email ? { email: tabFormData.email } : {}),
+      company: tabFormData.company || null,
+      model_item_name: tabFormData.model_item_name,
+      serial_no: tabFormData.serial_no,
+      serial_no_2: tabFormData.device_format === 'kit' ? tabFormData.serial_no_2 : null,
+      device_format: tabFormData.device_format,
+      quantity: tabFormData.device_format === 'kit' ? 2 : 1,
+      warranty: tabFormData.warranty,
+      purpose: tabFormData.purpose,
+      repair_estimate_by_company: customerQuote > 0 ? customerQuote : null,
+      estimate_by_us:
+        tabFormData.hope_markup != null && `${tabFormData.hope_markup}` !== ''
+          ? Number(tabFormData.hope_markup)
+          : null,
+      customer_paid: tabFormData.customer_paid,
+      payment_mode: tabFormData.payment_mode,
+      courier_expenses: tabFormData.courier_expenses,
+      manufacturer_invoice_number: tabFormData.manufacturer_invoice_number || null,
+      manufacturer_invoice_date: tabFormData.manufacturer_invoice_date || null,
+      manufacturer_invoice_total:
+        tabFormData.manufacturer_invoice_total != null &&
+        `${tabFormData.manufacturer_invoice_total}` !== ''
+          ? Number(tabFormData.manufacturer_invoice_total)
+          : null,
+      manufacturer_invoice_gst_rate: Number(tabFormData.manufacturer_invoice_gst_rate) || 18,
+      ...(Number(tabFormData.manufacturer_invoice_total) > 0
+        ? (() => {
+            const breakdown = calculateTaxFromInclusive(
+              Number(tabFormData.manufacturer_invoice_total),
+              Number(tabFormData.manufacturer_invoice_gst_rate) || 18
+            );
+            return {
+              manufacturer_invoice_base_amount: breakdown.netValue,
+              manufacturer_invoice_tax_amount: breakdown.taxAmount,
+              manufacturer_invoice_cgst_amount: breakdown.cgstAmount,
+              manufacturer_invoice_sgst_amount: breakdown.sgstAmount,
+            };
+          })()
+        : {
+            manufacturer_invoice_base_amount: null,
+            manufacturer_invoice_tax_amount: null,
+            manufacturer_invoice_cgst_amount: null,
+            manufacturer_invoice_sgst_amount: null,
+          }),
+      programming_done: Boolean(tabFormData.programming_done),
+      remarks: tabFormData.remarks || null,
+      estimate_status: tabFormData.estimate_status,
+      updated_at: now,
+      ear: tabFormData.device_format === 'kit' ? 'both' : tabFormData.ear,
+      mould: tabFormData.mould || null,
+      warranty_after_repair: tabFormData.warranty_after_repair || null,
+      receiving_center: tabFormData.receiving_center || null,
+      current_center_id: tabFormData.receiving_center_id || null,
+      pickup_center_id: tabFormData.pickup_center_id || null,
+      current_location_type: 'at_center' as const,
+    },
+    dateOfReceipt,
+    now,
+  };
+}
+
+export default function RepairForm({ repair, mode = 'create', prefillCustomer }: Props) {
   const router = useRouter();
   const { showAlert } = useAlert();
+  const [visitStats, setVisitStats] = useState<CustomerVisitStats | null>(null);
+  const [visitStatsLoading, setVisitStatsLoading] = useState(false);
   
   // Get saved email from localStorage for new repairs
   const [savedEmail, setSavedEmail] = useState<string>('');
@@ -193,11 +377,16 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
       setSavedEmail(email);
     }
   }, [mode]);
-  
+
   // State for custom purpose
   const [customPurpose, setCustomPurpose] = useState<string>('');
   const [isCustomPurpose, setIsCustomPurpose] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState(0);
+  const [seenSections, setSeenSections] = useState<boolean[]>(() =>
+    mode === 'edit'
+      ? FORM_SECTIONS.map(() => true)
+      : [true, false, false, false, false]
+  );
+  const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [centers, setCenters] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
@@ -273,10 +462,160 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
       };
     }
   });
+
+  const [visitTabs, setVisitTabs] = useState<RepairVisitTab[]>([]);
+  const [activeVisitTabId, setActiveVisitTabId] = useState('');
+
+  const syncCustomerToAllTabs = useCallback((fields: CustomerFields) => {
+    setVisitTabs((prev) =>
+      prev.map((tab) => ({
+        ...tab,
+        formData: syncCustomerFields(tab.formData, fields),
+      }))
+    );
+  }, []);
+
+  useEffect(() => {
+    if (mode !== 'create' || visitTabs.length > 0) return;
+    const tab = createNewVisitTab(savedEmail, prefillCustomer);
+    setVisitTabs([tab]);
+    setActiveVisitTabId(tab.id);
+    setFormData(tab.formData);
+    setCustomPurpose(tab.customPurpose);
+    setIsCustomPurpose(tab.isCustomPurpose);
+    setSeenSections(tab.seenSections);
+  }, [mode, savedEmail, prefillCustomer, visitTabs.length]);
+
+  useEffect(() => {
+    if (mode !== 'create' || !prefillCustomer) return;
+
+    const fields: CustomerFields = {
+      patient_name: prefillCustomer.name,
+      phone: prefillCustomer.phone,
+      email: prefillCustomer.email || '',
+      company: (prefillCustomer.company as CompanyType) || '',
+    };
+
+    setFormData((prev) => syncCustomerFields(prev, fields));
+    syncCustomerToAllTabs(fields);
+  }, [prefillCustomer, mode, syncCustomerToAllTabs]);
+
+  useEffect(() => {
+    if (mode !== 'create') return;
+
+    const phone = formData.phone?.trim();
+    if (!phone || phone.length < 10) {
+      setVisitStats(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setVisitStatsLoading(true);
+      try {
+        const stats = await getCustomerVisitStatsByPhone(supabase, phone);
+        setVisitStats(stats);
+      } catch {
+        setVisitStats(null);
+      } finally {
+        setVisitStatsLoading(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [formData.phone, mode]);
+
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [statusChanged, setStatusChanged] = useState<{ repairId: string; oldStatus: RepairStatus; newStatus: RepairStatus } | null>(null);
+
+  const getVisitTabLabel = useCallback(
+    (index: number) => {
+      const base = visitStats?.nextVisitNumber ?? 1;
+      return `Visit ${base + index}`;
+    },
+    [visitStats]
+  );
+
+  const getActiveTabSnapshot = useCallback(
+    (): RepairVisitTab => ({
+      id: activeVisitTabId,
+      formData,
+      customPurpose,
+      isCustomPurpose,
+      seenSections,
+    }),
+    [activeVisitTabId, formData, customPurpose, isCustomPurpose, seenSections]
+  );
+
+  const persistActiveVisitTab = useCallback(
+    (tabs: RepairVisitTab[]) => {
+      if (!activeVisitTabId) return tabs;
+      const snapshot = getActiveTabSnapshot();
+      return tabs.map((tab) => (tab.id === activeVisitTabId ? snapshot : tab));
+    },
+    [activeVisitTabId, getActiveTabSnapshot]
+  );
+
+  const switchVisitTab = useCallback(
+    (tabId: string) => {
+      if (tabId === activeVisitTabId) return;
+
+      setVisitTabs((prev) => {
+        const updated = persistActiveVisitTab(prev);
+        const target = updated.find((tab) => tab.id === tabId);
+        if (target) {
+          setFormData(target.formData);
+          setCustomPurpose(target.customPurpose);
+          setIsCustomPurpose(target.isCustomPurpose);
+          setSeenSections(target.seenSections);
+          setActiveVisitTabId(tabId);
+        }
+        return updated;
+      });
+    },
+    [activeVisitTabId, persistActiveVisitTab]
+  );
+
+  const addVisitTab = useCallback(() => {
+    const customerFields: CustomerFields = {
+      patient_name: formData.patient_name,
+      phone: formData.phone,
+      email: formData.email,
+      company: formData.company,
+    };
+
+    setVisitTabs((prev) => {
+      const updated = persistActiveVisitTab(prev);
+      const newTab = createNewVisitTab(savedEmail, undefined, customerFields);
+      setFormData(newTab.formData);
+      setCustomPurpose(newTab.customPurpose);
+      setIsCustomPurpose(newTab.isCustomPurpose);
+      setSeenSections(newTab.seenSections);
+      setActiveVisitTabId(newTab.id);
+      return [...updated, newTab];
+    });
+  }, [formData, persistActiveVisitTab, savedEmail]);
+
+  const removeVisitTab = useCallback(
+    (tabId: string) => {
+      setVisitTabs((prev) => {
+        if (prev.length <= 1) return prev;
+
+        const updated = persistActiveVisitTab(prev).filter((tab) => tab.id !== tabId);
+        if (tabId === activeVisitTabId) {
+          const nextTab = updated[updated.length - 1];
+          setFormData(nextTab.formData);
+          setCustomPurpose(nextTab.customPurpose);
+          setIsCustomPurpose(nextTab.isCustomPurpose);
+          setSeenSections(nextTab.seenSections);
+          setActiveVisitTabId(nextTab.id);
+        }
+        return updated;
+      });
+    },
+    [activeVisitTabId, persistActiveVisitTab]
+  );
 
   const invoiceTaxBreakdown = useMemo(
     () =>
@@ -294,12 +633,101 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
     return Math.round((invoiceTotal + markup) * 100) / 100;
   }, [formData.manufacturer_invoice_total, formData.hope_markup]);
 
+  const customerQuoteTaxBreakdown = useMemo(
+    () =>
+      calculateTaxFromInclusive(
+        customerQuote,
+        Number(formData.manufacturer_invoice_gst_rate) || 18
+      ),
+    [customerQuote, formData.manufacturer_invoice_gst_rate]
+  );
+
+  const maxUnlockedSection = useMemo(
+    () => getMaxUnlockedSection(formData, isCustomPurpose, customPurpose),
+    [formData, isCustomPurpose, customPurpose]
+  );
+
+  const allMandatoryValid = useMemo(
+    () =>
+      isCustomerSectionValid(formData) &&
+      isDeviceSectionValid(formData, isCustomPurpose, customPurpose) &&
+      isTrackingSectionValid(formData),
+    [formData, isCustomPurpose, customPurpose]
+  );
+
+  const allSectionsSeen = seenSections.every(Boolean);
+  const allVisitTabsReady = useMemo(() => {
+    if (mode !== 'create' || visitTabs.length === 0) return false;
+    const tabsWithActive = persistActiveVisitTab(visitTabs);
+    return tabsWithActive.every(isVisitTabComplete);
+  }, [mode, visitTabs, persistActiveVisitTab, formData, customPurpose, isCustomPurpose, seenSections]);
+
+  const canSubmit =
+    mode === 'edit'
+      ? allMandatoryValid
+      : visitTabs.length > 1
+        ? allVisitTabsReady
+        : allMandatoryValid && allSectionsSeen;
+  const sectionsSeenCount = seenSections.filter(Boolean).length;
+
+  const setSectionRef = useCallback(
+    (index: number) => (el: HTMLDivElement | null) => {
+      sectionRefs.current[index] = el;
+    },
+    []
+  );
+
+  const isSectionUnlocked = useCallback(
+    (index: number) => mode === 'edit' || index <= maxUnlockedSection,
+    [mode, maxUnlockedSection]
+  );
+
+  useEffect(() => {
+    if (mode === 'edit') return;
+
+    const observers: IntersectionObserver[] = [];
+
+    sectionRefs.current.forEach((el, index) => {
+      if (!el || !isSectionUnlocked(index)) return;
+
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) {
+            setSeenSections((prev) => {
+              if (prev[index]) return prev;
+              const next = [...prev];
+              next[index] = true;
+              return next;
+            });
+          }
+        },
+        { threshold: 0.25, rootMargin: '0px 0px -10% 0px' }
+      );
+
+      observer.observe(el);
+      observers.push(observer);
+    });
+
+    return () => observers.forEach((observer) => observer.disconnect());
+  }, [mode, maxUnlockedSection, isSectionUnlocked]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData((prev) => {
+      const next = { ...prev, [name]: value };
+      if (
+        mode === 'create' &&
+        (name === 'patient_name' || name === 'phone' || name === 'email' || name === 'company')
+      ) {
+        syncCustomerToAllTabs({
+          patient_name: name === 'patient_name' ? value : next.patient_name,
+          phone: name === 'phone' ? value : next.phone,
+          email: name === 'email' ? value : next.email,
+          company: name === 'company' ? (value as CompanyType | '') : next.company,
+        });
+      }
+      return next;
+    });
   };
 
   // Handle purpose selection change
@@ -389,6 +817,115 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
     setLoading(true);
 
     try {
+      if (mode === 'create' && visitTabs.length > 1) {
+        const allTabs = persistActiveVisitTab(visitTabs);
+        const incompleteTab = allTabs.find((tab) => !isVisitTabComplete(tab));
+        if (incompleteTab) {
+          throw new Error(
+            'Each visit tab must have all required fields filled and all sections reviewed before creating repairs.'
+          );
+        }
+
+        const connCheck = await fetch('/api/health-check', {
+          method: 'HEAD',
+          cache: 'no-store',
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!connCheck.ok) {
+          throw new Error('API server is not responding');
+        }
+
+        const firstTab = allTabs[0].formData;
+        if (!firstTab.phone || firstTab.phone.length < 10) {
+          throw new Error('Please enter a valid phone number');
+        }
+
+        const customerData = {
+          name: firstTab.patient_name,
+          phone: firstTab.phone,
+          email: firstTab.email,
+          company: firstTab.company || null,
+        };
+
+        const { data: existingCustomer } = await supabase
+          .from('customers')
+          .select('id, name, phone, email')
+          .eq('phone', firstTab.phone)
+          .maybeSingle();
+
+        let customerId: string;
+        if (existingCustomer) {
+          const { data: updatedCustomer, error: updateError } = await supabase
+            .from('customers')
+            .update(customerData)
+            .eq('id', existingCustomer.id)
+            .select()
+            .single();
+          if (updateError) throw new Error(`Failed to update customer: ${updateError.message}`);
+          customerId = updatedCustomer.id;
+        } else {
+          const { data: newCustomer, error: insertError } = await supabase
+            .from('customers')
+            .insert([customerData])
+            .select()
+            .single();
+          if (insertError) throw new Error(`Failed to create customer: ${insertError.message}`);
+          customerId = newCustomer.id;
+        }
+
+        const createdIds: string[] = [];
+        for (const tab of allTabs) {
+          const { dbData, dateOfReceipt, now } = buildRepairDbData(tab.formData, customerId);
+          const uuid =
+            typeof window !== 'undefined' && window.crypto?.randomUUID
+              ? window.crypto.randomUUID()
+              : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+                  const r = (Math.random() * 16) | 0;
+                  const v = c === 'x' ? r : (r & 0x3) | 0x8;
+                  return v.toString(16);
+                });
+
+          const createData = {
+            ...dbData,
+            id: uuid,
+            repair_id: tab.formData.repair_id,
+            status: 'Received' as RepairStatus,
+            date_of_receipt: dateOfReceipt,
+            created_at: now,
+          };
+
+          const { error: repairError } = await supabase.from('repairs').insert([createData]);
+          if (repairError) {
+            throw new Error(`Failed to create repair ${tab.formData.repair_id}: ${repairError.message}`);
+          }
+
+          if (tab.formData.receiving_center_id) {
+            const centerName = centers.find((c) => c.id === tab.formData.receiving_center_id)?.name;
+            if (centerName) {
+              await supabase.from('repairs').update({ receiving_center: centerName }).eq('id', uuid);
+            }
+            await fetch(`/api/repairs/${uuid}/movements`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                movement_type: 'received',
+                from_location_type: 'customer',
+                to_location_type: 'center',
+                to_center_id: tab.formData.receiving_center_id,
+                received_at: dateOfReceipt,
+              }),
+            });
+          }
+
+          createdIds.push(uuid);
+        }
+
+        showAlert(`${allTabs.length} repairs created successfully`, 'success');
+        router.push(`/dashboard/customers/${customerId}`);
+        router.refresh();
+        return;
+      }
+
       // Validate required fields
       const requiredFields = [
         'patient_name',
@@ -874,41 +1411,79 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
 
   return (
     <Paper sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
-      <Tabs
-        value={activeTab}
-        onChange={(_, v) => setActiveTab(v)}
-        sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
-      >
-        <Tab label="Customer" />
-        <Tab label="Device" />
-        <Tab label="Tracking" />
-        <Tab label="Financial" />
-        <Tab label="Notes" />
-      </Tabs>
-      <Box component="form" onSubmit={handleSubmit} noValidate>
-        <Grid container spacing={3}>
-          {mode === 'edit' && activeTab === 2 && (
-            <Grid item xs={12}>
-              <TextField
-                required
-                fullWidth
-                select
-                label="Status"
-                name="status"
-                value={formData.status}
-                onChange={handleStatusChange}
-              >
-                <MenuItem value="Received">Received</MenuItem>
-                <MenuItem value="Sent to Company for Repair">Sent to Company for Repair</MenuItem>
-                <MenuItem value="Returned from Manufacturer">Returned from Manufacturer</MenuItem>
-                <MenuItem value="Ready for Pickup">Ready for Pickup</MenuItem>
-                <MenuItem value="Completed">Completed</MenuItem>
-              </TextField>
-            </Grid>
-          )}
+      {mode === 'create' && (
+        <Box sx={{ mb: 4 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              {sectionsSeenCount} of {FORM_SECTIONS.length} sections reviewed
+            </Typography>
+            <Typography variant="body2" color={allMandatoryValid ? 'success.main' : 'text.secondary'}>
+              {allMandatoryValid ? 'All required fields complete' : 'Complete required fields as you go'}
+            </Typography>
+          </Stack>
+          <LinearProgress
+            variant="determinate"
+            value={(sectionsSeenCount / FORM_SECTIONS.length) * 100}
+            sx={{ height: 8, borderRadius: 4 }}
+          />
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
+            {FORM_SECTIONS.map((section, index) => (
+              <Chip
+                key={section.title}
+                size="small"
+                label={`${index + 1}. ${section.title}`}
+                color={seenSections[index] ? 'success' : isSectionUnlocked(index) ? 'primary' : 'default'}
+                variant={seenSections[index] ? 'filled' : 'outlined'}
+              />
+            ))}
+          </Stack>
+        </Box>
+      )}
 
-          {activeTab === 0 && (
-          <Grid item xs={12}>
+      <Box component="form" onSubmit={handleSubmit} noValidate>
+        <Stack spacing={5}>
+          {/* Section 1: Customer */}
+          <Box
+            ref={setSectionRef(0)}
+            sx={{
+              opacity: isSectionUnlocked(0) ? 1 : 0.45,
+              pointerEvents: isSectionUnlocked(0) ? 'auto' : 'none',
+            }}
+          >
+            <Typography variant="h6" fontWeight={700} color="primary.main">
+              1. {FORM_SECTIONS[0].title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {FORM_SECTIONS[0].subtitle}
+            </Typography>
+            {mode === 'create' && formData.phone?.trim().length >= 10 && (
+              <Alert
+                severity={visitStats?.totalVisits ? 'info' : 'success'}
+                sx={{ mb: 2 }}
+              >
+                {visitStatsLoading ? (
+                  'Checking customer history...'
+                ) : visitStats?.totalVisits ? (
+                  <>
+                    Returning customer — this will be Visit {visitStats.nextVisitNumber} (
+                    {visitStats.totalVisits} previous visit{visitStats.totalVisits !== 1 ? 's' : ''}).
+                    {visitStats.customerId && (
+                      <>
+                        {' '}
+                        <Link
+                          href={`/dashboard/customers/${visitStats.customerId}`}
+                          style={{ fontWeight: 600 }}
+                        >
+                          View visit history
+                        </Link>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  'New customer — this will be Visit 1.'
+                )}
+              </Alert>
+            )}
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>
                 <TextField
@@ -946,7 +1521,21 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                   label="Company"
                   name="company"
                   value={formData.company || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, company: e.target.value as CompanyType | '' }))}
+                  onChange={(e) => {
+                    const company = e.target.value as CompanyType | '';
+                    setFormData((prev) => {
+                      const next = { ...prev, company };
+                      if (mode === 'create') {
+                        syncCustomerToAllTabs({
+                          patient_name: next.patient_name,
+                          phone: next.phone,
+                          email: next.email,
+                          company,
+                        });
+                      }
+                      return next;
+                    });
+                  }}
                 >
                   <MenuItem value="">None</MenuItem>
                   <MenuItem value="Signia">Signia</MenuItem>
@@ -961,12 +1550,102 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                 </TextField>
               </Grid>
             </Grid>
-          </Grid>
+          </Box>
+
+          {mode === 'create' && visitTabs.length > 0 && (
+            <Box sx={{ mb: 1 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Add a tab for each repair visit — same customer, different device or repair details.
+              </Typography>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  gap: 0.5,
+                  borderBottom: 2,
+                  borderColor: 'divider',
+                  overflowX: 'auto',
+                  pb: 0,
+                }}
+              >
+                {visitTabs.map((tab, index) => (
+                  <Box
+                    key={tab.id}
+                    onClick={() => switchVisitTab(tab.id)}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.5,
+                      px: 2,
+                      py: 1,
+                      cursor: 'pointer',
+                      borderTopLeftRadius: 8,
+                      borderTopRightRadius: 8,
+                      border: '1px solid',
+                      borderBottom: 'none',
+                      borderColor: activeVisitTabId === tab.id ? 'primary.main' : 'divider',
+                      bgcolor: activeVisitTabId === tab.id ? 'background.paper' : 'grey.100',
+                      color: activeVisitTabId === tab.id ? 'primary.main' : 'text.secondary',
+                      fontWeight: activeVisitTabId === tab.id ? 700 : 500,
+                      minWidth: 110,
+                      flexShrink: 0,
+                      mb: '-2px',
+                    }}
+                  >
+                    <Typography variant="body2" fontWeight="inherit" noWrap>
+                      {getVisitTabLabel(index)}
+                    </Typography>
+                    {visitTabs.length > 1 && (
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeVisitTab(tab.id);
+                        }}
+                        sx={{ p: 0.25 }}
+                        aria-label={`Close ${getVisitTabLabel(index)}`}
+                      >
+                        <CloseIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    )}
+                  </Box>
+                ))}
+                <IconButton
+                  onClick={addVisitTab}
+                  size="small"
+                  sx={{ mb: 0.5, ml: 0.5, flexShrink: 0 }}
+                  aria-label="Add repair visit tab"
+                >
+                  <AddIcon />
+                </IconButton>
+              </Box>
+            </Box>
           )}
 
-          {activeTab === 1 && (
-          <>
-          <Grid item xs={12}>
+          {/* Section 2: Device & Repair */}
+          <Box
+            ref={setSectionRef(1)}
+            sx={{
+              opacity: isSectionUnlocked(1) ? 1 : 0.45,
+              pointerEvents: isSectionUnlocked(1) ? 'auto' : 'none',
+            }}
+          >
+            {!isSectionUnlocked(1) && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Fill in patient name and a valid phone number above to continue.
+              </Alert>
+            )}
+            <Typography variant="h6" fontWeight={700} color="primary.main">
+              2. {FORM_SECTIONS[1].title}
+              {mode === 'create' && visitTabs.length > 1 && activeVisitTabId && (
+                <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                  ({getVisitTabLabel(visitTabs.findIndex((t) => t.id === activeVisitTabId))})
+                </Typography>
+              )}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {FORM_SECTIONS[1].subtitle}
+            </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <FormControl fullWidth>
@@ -1083,12 +1762,6 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                   <MenuItem value="Out of warranty">Out of warranty</MenuItem>
                 </TextField>
               </Grid>
-            </Grid>
-          </Grid>
-
-          {/* Repair Information */}
-          <Grid item xs={12}>
-            <Grid container spacing={2}>
               <Grid item xs={12}>
                 <TextField
                   required
@@ -1178,13 +1851,48 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                 </TextField>
               </Grid>
             </Grid>
-          </Grid>
-          </>
-          )}
+          </Box>
 
-          {activeTab === 2 && (
-          <>
-          <Grid item xs={12} md={8}>
+          {/* Section 3: Center Tracking */}
+          <Box
+            ref={setSectionRef(2)}
+            sx={{
+              opacity: isSectionUnlocked(2) ? 1 : 0.45,
+              pointerEvents: isSectionUnlocked(2) ? 'auto' : 'none',
+            }}
+          >
+            {!isSectionUnlocked(2) && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Complete all required device and repair fields above to continue.
+              </Alert>
+            )}
+            <Typography variant="h6" fontWeight={700} color="primary.main">
+              3. {FORM_SECTIONS[2].title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {FORM_SECTIONS[2].subtitle}
+            </Typography>
+            <Grid container spacing={2}>
+              {mode === 'edit' && (
+                <Grid item xs={12} md={8}>
+                  <TextField
+                    required
+                    fullWidth
+                    select
+                    label="Status"
+                    name="status"
+                    value={formData.status}
+                    onChange={handleStatusChange}
+                  >
+                    <MenuItem value="Received">Received</MenuItem>
+                    <MenuItem value="Sent to Company for Repair">Sent to Company for Repair</MenuItem>
+                    <MenuItem value="Returned from Manufacturer">Returned from Manufacturer</MenuItem>
+                    <MenuItem value="Ready for Pickup">Ready for Pickup</MenuItem>
+                    <MenuItem value="Completed">Completed</MenuItem>
+                  </TextField>
+                </Grid>
+              )}
+              <Grid item xs={12} md={8}>
             <CenterSelect
               label="Receiving Center"
               name="receiving_center_id"
@@ -1217,11 +1925,28 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
               />
             </Grid>
           )}
-          </>
-          )}
+            </Grid>
+          </Box>
 
-          {activeTab === 3 && (
-          <Grid item xs={12}>
+          {/* Section 4: Financial */}
+          <Box
+            ref={setSectionRef(3)}
+            sx={{
+              opacity: isSectionUnlocked(3) ? 1 : 0.45,
+              pointerEvents: isSectionUnlocked(3) ? 'auto' : 'none',
+            }}
+          >
+            {!isSectionUnlocked(3) && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Select a receiving center above to continue to financial details.
+              </Alert>
+            )}
+            <Typography variant="h6" fontWeight={700} color="primary.main">
+              4. {FORM_SECTIONS[3].title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {FORM_SECTIONS[3].subtitle}
+            </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <Typography variant="subtitle1" fontWeight={700} color="primary.main">
@@ -1326,9 +2051,19 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                       : 'Enter company invoice and your markup above'}
                   </Typography>
                   {customerQuote > 0 && (
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                      Patient will see this amount for approval.
-                    </Typography>
+                    <>
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                        Patient will see this amount for approval.
+                      </Typography>
+                      <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 2, bgcolor: '#FFFFFF', border: '1px solid #FDBA74' }}>
+                        <Typography variant="caption" color="text.secondary" display="block" fontWeight={600}>
+                          Your repair invoice breakdown
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                          Net {formatCurrency(customerQuoteTaxBreakdown.netValue)} + CGST {formatCurrency(customerQuoteTaxBreakdown.cgstAmount)} + SGST {formatCurrency(customerQuoteTaxBreakdown.sgstAmount)}
+                        </Typography>
+                      </Box>
+                    </>
                   )}
                 </Box>
               </Grid>
@@ -1383,11 +2118,27 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                 </Grid>
               )}
             </Grid>
-          </Grid>
-          )}
+          </Box>
 
-          {activeTab === 4 && (
-          <Grid item xs={12}>
+          {/* Section 5: Notes */}
+          <Box
+            ref={setSectionRef(4)}
+            sx={{
+              opacity: isSectionUnlocked(4) ? 1 : 0.45,
+              pointerEvents: isSectionUnlocked(4) ? 'auto' : 'none',
+            }}
+          >
+            {!isSectionUnlocked(4) && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Complete the tracking section above to continue.
+              </Alert>
+            )}
+            <Typography variant="h6" fontWeight={700} color="primary.main">
+              5. {FORM_SECTIONS[4].title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {FORM_SECTIONS[4].subtitle}
+            </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <FormControlLabel
@@ -1413,11 +2164,10 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                 />
               </Grid>
             </Grid>
-          </Grid>
-          )}
+          </Box>
 
           {error && (
-            <Grid item xs={12}>
+            <Box>
               <Alert 
                 severity="error" 
                 variant="filled" 
@@ -1441,10 +2191,19 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
                   </Typography>
                 )}
               </Alert>
-            </Grid>
+            </Box>
           )}
 
-          <Grid item xs={12}>
+          <Box>
+            {mode === 'create' && !canSubmit && !loading && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                {visitTabs.length > 1
+                  ? 'Complete all required fields and review all sections in every visit tab before creating repairs.'
+                  : !allMandatoryValid
+                    ? 'Fill in all required fields in each section before creating the repair.'
+                    : 'Scroll through all sections to review the full form before creating the repair.'}
+              </Alert>
+            )}
             <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
               {mode === 'edit' && (
                 <Button
@@ -1468,13 +2227,17 @@ export default function RepairForm({ repair, mode = 'create' }: Props) {
               <Button
                 type="submit"
                 variant="contained"
-                disabled={loading}
+                disabled={loading || !canSubmit}
               >
-                {mode === 'create' ? 'Create Repair' : 'Save Changes'}
+                {mode === 'create'
+                  ? visitTabs.length > 1
+                    ? `Create ${visitTabs.length} Repairs`
+                    : 'Create Repair'
+                  : 'Save Changes'}
               </Button>
             </Box>
-          </Grid>
-        </Grid>
+          </Box>
+        </Stack>
       </Box>
 
       {/* Delete Confirmation Dialog */}

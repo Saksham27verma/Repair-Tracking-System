@@ -12,8 +12,9 @@ import { supabase } from '@/lib/supabase'
 type Customer = Database['public']['Tables']['customers']['Row']
 
 interface CustomerWithRepair extends Customer {
+  total_visits: number;
   latest_repair?: {
-    product_name: string;
+    model_item_name: string;
   };
 }
 
@@ -42,20 +43,19 @@ export default function CustomersPage() {
 
       if (customersError) throw customersError
 
-      // For each customer, get their latest repair
       const customersWithRepairs = await Promise.all(
         (customersData || []).map(async (customer) => {
-          const { data: repairData } = await supabase
+          const { data: repairData, count } = await supabase
             .from('repairs')
-            .select('product_name')
+            .select('model_item_name', { count: 'exact' })
             .eq('customer_id', customer.id)
             .order('created_at', { ascending: false })
             .limit(1)
-            .single()
 
           return {
             ...customer,
-            latest_repair: repairData || undefined
+            total_visits: count ?? 0,
+            latest_repair: repairData?.[0] || undefined,
           }
         })
       )
