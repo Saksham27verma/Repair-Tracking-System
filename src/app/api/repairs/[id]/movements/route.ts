@@ -83,7 +83,12 @@ export async function POST(
 
     const lastMovement = recentMovements?.[0];
 
-    if (movementInput.movement_type === lastMovement?.movement_type) {
+    // Center transfers can be logged multiple times (hub hops, re-routes, in-transit then received, etc.)
+    const repeatableMovementTypes: MovementType[] = ['center_transfer'];
+    if (
+      movementInput.movement_type === lastMovement?.movement_type &&
+      !repeatableMovementTypes.includes(movementInput.movement_type)
+    ) {
       return NextResponse.json(
         { error: `This step was already recorded (${movementInput.movement_type.replace(/_/g, ' ')})` },
         { status: 400 }

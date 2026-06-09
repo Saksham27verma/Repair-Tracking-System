@@ -1,12 +1,14 @@
 'use client';
 
-import { Box, Typography, Chip, Paper, Divider } from '@mui/material';
+import { useState } from 'react';
+import { Box, Typography, Chip, Paper, Divider, IconButton, Tooltip, CircularProgress } from '@mui/material';
 import {
   Store as CenterIcon,
   LocalShipping as TransitIcon,
   Factory as ManufacturerIcon,
   Person as PersonIcon,
   ArrowForward as ArrowIcon,
+  DeleteOutline as DeleteIcon,
 } from '@mui/icons-material';
 import {
   RepairMovement,
@@ -18,6 +20,11 @@ import { getMovementLocationName, buildJourneySummary } from '@/lib/tracking';
 interface DeviceJourneyTimelineProps {
   movements: RepairMovement[];
   highlightLatest?: boolean;
+  onDeleteMovement?: (movementId: string) => Promise<void>;
+}
+
+function isDeletableMovement(movement: RepairMovement): boolean {
+  return Boolean(movement.id) && !movement.id.startsWith('legacy-');
 }
 
 const LOCATION_ICONS: Record<string, React.ReactNode> = {
@@ -72,7 +79,26 @@ function LocationPill({
 export default function DeviceJourneyTimeline({
   movements,
   highlightLatest = true,
+  onDeleteMovement,
 }: DeviceJourneyTimelineProps) {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (movement: RepairMovement) => {
+    if (!onDeleteMovement || !isDeletableMovement(movement)) return;
+
+    const label = MOVEMENT_TYPE_LABELS[movement.movement_type];
+    if (!window.confirm(`Delete this journey step (${label})? The repair status and location will be updated.`)) {
+      return;
+    }
+
+    setDeletingId(movement.id);
+    try {
+      await onDeleteMovement(movement.id);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   if (!movements.length) {
     return (
       <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
@@ -162,9 +188,30 @@ export default function DeviceJourneyTimeline({
                   <Typography variant="subtitle2" fontWeight={700}>
                     {MOVEMENT_TYPE_LABELS[movement.movement_type]}
                   </Typography>
-                  {isLatest && (
-                    <Chip label="Current step" size="small" color="primary" sx={{ fontWeight: 600, height: 22 }} />
-                  )}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    {isLatest && (
+                      <Chip label="Current step" size="small" color="primary" sx={{ fontWeight: 600, height: 22 }} />
+                    )}
+                    {onDeleteMovement && isDeletableMovement(movement) && (
+                      <Tooltip title="Delete this step">
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDelete(movement)}
+                            disabled={deletingId === movement.id}
+                            aria-label="Delete journey step"
+                          >
+                            {deletingId === movement.id ? (
+                              <CircularProgress size={16} />
+                            ) : (
+                              <DeleteIcon fontSize="small" />
+                            )}
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    )}
+                  </Box>
                 </Box>
 
                 {/* Route visualization */}

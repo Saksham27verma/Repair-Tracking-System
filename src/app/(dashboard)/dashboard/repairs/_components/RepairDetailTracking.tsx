@@ -61,6 +61,18 @@ export default function RepairDetailTracking({
       ? buildLegacyMovements(repair)
       : [];
 
+  const handleDeleteMovement = async (movementId: string) => {
+    const res = await fetch(`/api/repairs/${repairId}/movements/${movementId}`, {
+      method: 'DELETE',
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to delete movement');
+    }
+    await fetchMovements();
+    if (data.repair) onRepairUpdated?.(data.repair);
+  };
+
   return (
     <>
       <ContentCard
@@ -109,7 +121,10 @@ export default function RepairDetailTracking({
                 Showing reconstructed journey from repair dates. Log movements to record full transfer details.
               </Typography>
             )}
-            <DeviceJourneyTimeline movements={displayMovements} />
+            <DeviceJourneyTimeline
+              movements={displayMovements}
+              onDeleteMovement={movements.length > 0 ? handleDeleteMovement : undefined}
+            />
           </>
         )}
         {loading && (
@@ -125,6 +140,8 @@ export default function RepairDetailTracking({
         repairId={repairId}
         currentCenterId={currentCenterId}
         currentCenterName={currentCenterName}
+        currentLocationType={currentLocationType}
+        movements={displayMovements}
         onSuccess={(updated) => {
           fetchMovements();
           if (updated) onRepairUpdated?.(updated);

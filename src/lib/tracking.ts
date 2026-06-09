@@ -11,6 +11,7 @@ import {
 export interface RepairUpdatePayload {
   status?: RepairStatus;
   current_location_type?: CurrentLocationType;
+  current_center_id?: string | null;
   current_center?: { id: string; name: string } | null;
   pickup_center?: { id: string; name: string } | null;
 }
@@ -244,6 +245,169 @@ export function getDateUpdatesForMovement(
     default:
       return {};
   }
+}
+
+export interface RepairStateFromMovements {
+  status: RepairStatus;
+  current_location_type: CurrentLocationType;
+  current_center_id: string | null;
+  pickup_center_id: string | null;
+  date_out_to_manufacturer: string | null;
+  date_received_from_manufacturer: string | null;
+  date_out_to_customer: string | null;
+}
+
+/** Rebuild repair status, location, and dates from the full movement log */
+export function deriveRepairStateFromMovements(
+  movements: RepairMovement[]
+): RepairStateFromMovements {
+  const sorted = [...movements].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  if (!sorted.length) {
+    return {
+      status: 'Received',
+      current_location_type: 'at_center',
+      current_center_id: null,
+      pickup_center_id: null,
+      date_out_to_manufacturer: null,
+      date_received_from_manufacturer: null,
+      date_out_to_customer: null,
+    };
+  }
+
+  let status: RepairStatus = 'Received';
+  let location = {
+    current_location_type: 'at_center' as CurrentLocationType,
+    current_center_id: null as string | null,
+  };
+  let pickup_center_id: string | null = null;
+
+  for (const movement of sorted) {
+    if (!movement.to_location_type) continue;
+
+    location = deriveLocationFromMovement({
+      movement_type: movement.movement_type,
+      to_location_type: movement.to_location_type,
+      to_center_id: movement.to_center_id,
+      from_location_type: movement.from_location_type,
+      from_center_id: movement.from_center_id,
+    });
+
+    const movementStatus = getStatusForMovement(movement.movement_type);
+    if (movementStatus) status = movementStatus;
+
+    if (movement.movement_type === 'ready_for_pickup' && movement.to_center_id) {
+      pickup_center_id = movement.to_center_id;
+    }
+  }
+
+  const lastReady = [...sorted].reverse().find((m) => m.movement_type === 'ready_for_pickup');
+  pickup_center_id = lastReady?.to_center_id ?? null;
+
+  const lastSent = [...sorted].reverse().find((m) => m.movement_type === 'sent_to_manufacturer');
+  const lastReturned = [...sorted].reverse().find((m) => m.movement_type === 'returned_from_manufacturer');
+  const lastDelivered = [...sorted].reverse().find((m) => m.movement_type === 'delivered');
+
+  return {
+    status,
+    ...location,
+    pickup_center_id,
+    date_out_to_manufacturer: lastSent
+      ? lastSent.shipped_at || lastSent.created_at
+      : null,
+    date_received_from_manufacturer: lastReturned
+      ? lastReturned.received_at || lastReturned.created_at
+      : null,
+    date_out_to_customer: lastDelivered
+      ? lastDelivered.received_at || lastDelivered.created_at
+      : null,
+  };
+}
+
+/** Infer the center the device is at or was last at from movement history */
+export function inferCenterFromMovements(
+  movements: RepairMovement[],
+  currentCenterId?: string | null
+): string | undefined {
+  if (currentCenterId) return currentCenterId;
+
+  const sorted = [...movements].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const movement = sorted[i];
+    if (movement.movement_type === 'sent_to_manufacturer') return undefined;
+    if (movement.to_center_id && movement.to_location_type === 'center') {
+      return movement.to_center_id;
+    }
+    if (movement.from_center_id && movement.from_location_type === 'center') {
+      return movement.from_center_id;
+    }
+  }
+
+  return undefined;
+}
+
+/** Next valid movement types based on journey state */
+export function getAvailableMovementOptions(
+  movements: RepairMovement[],
+  currentLocationType?: CurrentLocationType,
+  currentCenterId?: string | null
+): MovementType[] {
+  const sorted = [...movements].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+  const lastType = sorted[sorted.length - 1]?.movement_type;
+  const hasSent = sorted.some((m) => m.movement_type === 'sent_to_manufacturer');
+  const hasReturned = sorted.some((m) => m.movement_type === 'returned_from_manufacturer');
+  const hasReady = sorted.some((m) => m.movement_type === 'ready_for_pickup');
+  const hasDelivered = sorted.some((m) => m.movement_type === 'delivered');
+  const inferredCenterId = inferCenterFromMovements(sorted, currentCenterId);
+
+  if (hasDelivered || currentLocationType === 'with_customer') {
+    return [];
+  }
+
+  if (currentLocationType === 'at_manufacturer' || (hasSent && !hasReturned)) {
+    return ['returned_from_manufacturer'];
+  }
+
+  const atOrNearCenter =
+    Boolean(inferredCenterId) ||
+    currentLocationType === 'at_center' ||
+    currentLocationType === 'in_transit' ||
+    lastType === 'received' ||
+    lastType === 'center_transfer' ||
+    lastType === 'returned_from_manufacturer';
+
+  const options: MovementType[] = [];
+
+  if (atOrNearCenter && !hasSent) {
+    options.push('sent_to_manufacturer');
+    options.push('center_transfer');
+  }
+
+  if (hasReturned && !hasReady) {
+    if (!options.includes('ready_for_pickup')) options.push('ready_for_pickup');
+    if (!options.includes('center_transfer')) options.push('center_transfer');
+  }
+
+  if (hasReady && lastType === 'ready_for_pickup' && !hasDelivered) {
+    options.push('delivered');
+  }
+
+  const ordered: MovementType[] = [
+    'center_transfer',
+    'sent_to_manufacturer',
+    'returned_from_manufacturer',
+    'ready_for_pickup',
+    'delivered',
+  ];
+
+  return ordered.filter((type) => options.includes(type));
 }
 
 export function getMovementForStatusChange(
