@@ -16,6 +16,9 @@ export const COMPANY_CONFIG = {
   address: 'G-14, Ground Floor, King Mall, Rohini, Delhi - 85',
   phone: '9711871169',
   website: 'hearinghope.in',
+  gstin: '07XXXXXXXXXX1Z5',
+  state: 'Delhi',
+  stateCode: '07',
   brandRed: '#A80000',
   logoPath: 'public/images/logohope.svg',
 } as const;

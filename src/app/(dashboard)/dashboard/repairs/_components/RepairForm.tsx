@@ -30,8 +30,23 @@ import {
   Chip,
   Stack,
   IconButton,
+  Stepper,
+  Step,
+  StepButton,
+  StepLabel,
+  Tooltip,
 } from '@mui/material';
-import { Add as AddIcon, Close as CloseIcon } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  Close as CloseIcon,
+  MoveToInbox as MoveToInboxIcon,
+  LocalShipping as LocalShippingIcon,
+  AssignmentReturn as AssignmentReturnIcon,
+  Storefront as StorefrontIcon,
+  CheckCircle as CheckCircleIcon,
+  ArrowForward as ArrowForwardIcon,
+  CalendarToday as CalendarTodayIcon,
+} from '@mui/icons-material';
 import CenterSelect from '@/app/components/CenterSelect';
 import { getMovementForStatusChange } from '@/lib/tracking';
 // Comment out problematic import and use direct imports from database.ts
@@ -193,6 +208,78 @@ const FORM_SECTIONS = [
   { title: 'Financial', subtitle: 'Invoices, markup, and payment' },
   { title: 'Notes', subtitle: 'Programming status and remarks' },
 ] as const;
+
+const STATUS_STEPS: {
+  status: RepairStatus;
+  label: string;
+  description: string;
+  dateField: keyof FormState | null;
+  dateLabel: string | null;
+  relevantSections: string[];
+  icon: React.ReactNode;
+  color: string;
+  bgColor: string;
+}[] = [
+  {
+    status: 'Received',
+    label: 'Received',
+    description: 'Device received from the customer and logged.',
+    dateField: 'date_of_receipt',
+    dateLabel: 'Date Received',
+    relevantSections: ['Customer', 'Device & Repair', 'Center Tracking'],
+    icon: <MoveToInboxIcon />,
+    color: '#1565C0',
+    bgColor: '#E3F2FD',
+  },
+  {
+    status: 'Sent to Company for Repair',
+    label: 'Sent to Company',
+    description: 'Device dispatched to the manufacturer for repair.',
+    dateField: 'date_out_to_manufacturer',
+    dateLabel: 'Date Sent',
+    relevantSections: ['Center Tracking', 'Financial'],
+    icon: <LocalShippingIcon />,
+    color: '#E65100',
+    bgColor: '#FFF3E0',
+  },
+  {
+    status: 'Returned from Manufacturer',
+    label: 'Returned',
+    description: 'Device returned from the manufacturer. Enter invoice details.',
+    dateField: 'date_received_from_manufacturer',
+    dateLabel: 'Date Returned',
+    relevantSections: ['Financial'],
+    icon: <AssignmentReturnIcon />,
+    color: '#6A1B9A',
+    bgColor: '#F3E5F5',
+  },
+  {
+    status: 'Ready for Pickup',
+    label: 'Ready for Pickup',
+    description: 'Device is ready. Notify the customer and set pickup center.',
+    dateField: null,
+    dateLabel: null,
+    relevantSections: ['Center Tracking', 'Financial'],
+    icon: <StorefrontIcon />,
+    color: '#2E7D32',
+    bgColor: '#E8F5E9',
+  },
+  {
+    status: 'Completed',
+    label: 'Completed',
+    description: 'Device handed back to the customer. Confirm payment.',
+    dateField: 'date_out_to_customer',
+    dateLabel: 'Date Completed',
+    relevantSections: ['Financial', 'Notes'],
+    icon: <CheckCircleIcon />,
+    color: '#1B5E20',
+    bgColor: '#F1F8E9',
+  },
+];
+
+function getStatusIndex(status: RepairStatus): number {
+  return STATUS_STEPS.findIndex((s) => s.status === status);
+}
 
 function isCustomerSectionValid(formData: FormState): boolean {
   return Boolean(formData.patient_name?.trim()) && (formData.phone?.trim().length ?? 0) >= 10;
@@ -669,6 +756,9 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
         ? allVisitTabsReady
         : allMandatoryValid && allSectionsSeen;
   const sectionsSeenCount = seenSections.filter(Boolean).length;
+
+  const currentStatusIndex = getStatusIndex(formData.status);
+  const currentStatusStep = STATUS_STEPS[currentStatusIndex] ?? STATUS_STEPS[0];
 
   const setSectionRef = useCallback(
     (index: number) => (el: HTMLDivElement | null) => {
@@ -1440,6 +1530,177 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
         </Box>
       )}
 
+      {/* ── Edit-mode Status Stepper ── */}
+      {mode === 'edit' && (
+        <Box sx={{ mb: 4 }}>
+          {/* Stepper */}
+          <Stepper nonLinear activeStep={currentStatusIndex} alternativeLabel>
+            {STATUS_STEPS.map((step, index) => (
+              <Step key={step.status} completed={index < currentStatusIndex}>
+                <StepButton
+                  onClick={() =>
+                    handleStatusChange({
+                      target: { value: step.status },
+                    } as React.ChangeEvent<HTMLInputElement>)
+                  }
+                >
+                  <StepLabel
+                    icon={
+                      <Box
+                        sx={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          bgcolor:
+                            index === currentStatusIndex
+                              ? step.color
+                              : index < currentStatusIndex
+                              ? step.color + '99'
+                              : 'grey.300',
+                          color: index <= currentStatusIndex ? '#fff' : 'grey.500',
+                          transition: 'all 0.2s',
+                          '& svg': { fontSize: 18 },
+                        }}
+                      >
+                        {step.icon}
+                      </Box>
+                    }
+                    sx={{
+                      '& .MuiStepLabel-label': {
+                        fontWeight: index === currentStatusIndex ? 700 : 400,
+                        color:
+                          index === currentStatusIndex
+                            ? step.color
+                            : index < currentStatusIndex
+                            ? 'text.secondary'
+                            : 'text.disabled',
+                        fontSize: { xs: '0.65rem', sm: '0.75rem' },
+                      },
+                    }}
+                  >
+                    {step.label}
+                  </StepLabel>
+                </StepButton>
+              </Step>
+            ))}
+          </Stepper>
+
+          {/* Status context card */}
+          <Box
+            sx={{
+              mt: 2,
+              p: 2.5,
+              borderRadius: 2,
+              bgcolor: currentStatusStep.bgColor,
+              border: `2px solid ${currentStatusStep.color}33`,
+              display: 'flex',
+              flexDirection: { xs: 'column', md: 'row' },
+              gap: 2,
+              alignItems: { md: 'flex-start' },
+            }}
+          >
+            {/* Left: status info */}
+            <Box sx={{ flex: 1 }}>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
+                <Box sx={{ color: currentStatusStep.color, display: 'flex' }}>
+                  {currentStatusStep.icon}
+                </Box>
+                <Typography variant="subtitle1" fontWeight={700} color={currentStatusStep.color}>
+                  {currentStatusStep.label}
+                </Typography>
+              </Stack>
+              <Typography variant="body2" color="text.secondary">
+                {currentStatusStep.description}
+              </Typography>
+              {currentStatusStep.relevantSections.length > 0 && (
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                    Focus on:
+                  </Typography>
+                  {currentStatusStep.relevantSections.map((s) => (
+                    <Chip
+                      key={s}
+                      label={s}
+                      size="small"
+                      sx={{
+                        bgcolor: currentStatusStep.color + '22',
+                        color: currentStatusStep.color,
+                        fontWeight: 600,
+                        border: `1px solid ${currentStatusStep.color}44`,
+                      }}
+                    />
+                  ))}
+                </Stack>
+              )}
+            </Box>
+
+            {/* Right: date field for this status */}
+            <Box sx={{ minWidth: { md: 230 } }}>
+              {currentStatusStep.dateField && currentStatusStep.dateLabel && (
+                <LocalizationProvider dateAdapter={AdapterDayjs}>
+                  <DatePicker
+                    label={currentStatusStep.dateLabel}
+                    value={
+                      formData[currentStatusStep.dateField as keyof FormState]
+                        ? dayjs(formData[currentStatusStep.dateField as keyof FormState] as string)
+                        : null
+                    }
+                    onChange={(date: Dayjs | null) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        [currentStatusStep.dateField as string]: date?.isValid()
+                          ? date.toISOString()
+                          : null,
+                      }))
+                    }
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        size: 'small',
+                        sx: {
+                          bgcolor: 'background.paper',
+                          borderRadius: 1,
+                          '& .MuiOutlinedInput-root': {
+                            '& fieldset': { borderColor: currentStatusStep.color + '66' },
+                          },
+                        },
+                      },
+                    }}
+                  />
+                </LocalizationProvider>
+              )}
+
+              {/* Advance button */}
+              {currentStatusIndex < STATUS_STEPS.length - 1 && (
+                <Button
+                  size="small"
+                  variant="contained"
+                  endIcon={<ArrowForwardIcon />}
+                  onClick={() =>
+                    handleStatusChange({
+                      target: { value: STATUS_STEPS[currentStatusIndex + 1].status },
+                    } as React.ChangeEvent<HTMLInputElement>)
+                  }
+                  sx={{
+                    mt: currentStatusStep.dateField ? 1.5 : 0,
+                    bgcolor: currentStatusStep.color,
+                    '&:hover': { bgcolor: currentStatusStep.color + 'DD' },
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    width: '100%',
+                  }}
+                >
+                  Move to: {STATUS_STEPS[currentStatusIndex + 1].label}
+                </Button>
+              )}
+            </Box>
+          </Box>
+        </Box>
+      )}
+
       <Box component="form" onSubmit={handleSubmit} noValidate>
         <Stack spacing={5}>
           {/* Section 1: Customer */}
@@ -1866,32 +2127,27 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                 Complete all required device and repair fields above to continue.
               </Alert>
             )}
-            <Typography variant="h6" fontWeight={700} color="primary.main">
-              3. {FORM_SECTIONS[2].title}
-            </Typography>
+            <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+              <Typography variant="h6" fontWeight={700} color="primary.main">
+                3. {FORM_SECTIONS[2].title}
+              </Typography>
+              {mode === 'edit' && currentStatusStep.relevantSections.includes('Center Tracking') && (
+                <Chip
+                  label="Relevant for current status"
+                  size="small"
+                  sx={{
+                    bgcolor: currentStatusStep.color + '22',
+                    color: currentStatusStep.color,
+                    fontWeight: 600,
+                    border: `1px solid ${currentStatusStep.color}44`,
+                  }}
+                />
+              )}
+            </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               {FORM_SECTIONS[2].subtitle}
             </Typography>
             <Grid container spacing={2}>
-              {mode === 'edit' && (
-                <Grid item xs={12} md={8}>
-                  <TextField
-                    required
-                    fullWidth
-                    select
-                    label="Status"
-                    name="status"
-                    value={formData.status}
-                    onChange={handleStatusChange}
-                  >
-                    <MenuItem value="Received">Received</MenuItem>
-                    <MenuItem value="Sent to Company for Repair">Sent to Company for Repair</MenuItem>
-                    <MenuItem value="Returned from Manufacturer">Returned from Manufacturer</MenuItem>
-                    <MenuItem value="Ready for Pickup">Ready for Pickup</MenuItem>
-                    <MenuItem value="Completed">Completed</MenuItem>
-                  </TextField>
-                </Grid>
-              )}
               <Grid item xs={12} md={8}>
             <CenterSelect
               label="Receiving Center"
@@ -1941,17 +2197,41 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                 Select a receiving center above to continue to financial details.
               </Alert>
             )}
-            <Typography variant="h6" fontWeight={700} color="primary.main">
-              4. {FORM_SECTIONS[3].title}
-            </Typography>
+            <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+              <Typography variant="h6" fontWeight={700} color="primary.main">
+                4. {FORM_SECTIONS[3].title}
+              </Typography>
+              {mode === 'edit' && currentStatusStep.relevantSections.includes('Financial') && (
+                <Chip
+                  label="Relevant for current status"
+                  size="small"
+                  sx={{
+                    bgcolor: currentStatusStep.color + '22',
+                    color: currentStatusStep.color,
+                    fontWeight: 600,
+                    border: `1px solid ${currentStatusStep.color}44`,
+                  }}
+                />
+              )}
+            </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               {FORM_SECTIONS[3].subtitle}
             </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12}>
-                <Typography variant="subtitle1" fontWeight={700} color="primary.main">
-                  Step 1 — Company Invoice
-                </Typography>
+                <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                  <Typography variant="subtitle1" fontWeight={700} color="primary.main">
+                    Step 1 — Company Invoice
+                  </Typography>
+                  {mode === 'edit' && formData.status === 'Returned from Manufacturer' && (
+                    <Chip
+                      label="Enter now — device just returned"
+                      size="small"
+                      color="warning"
+                      icon={<AssignmentReturnIcon style={{ fontSize: 14 }} />}
+                    />
+                  )}
+                </Stack>
                 <Typography variant="body2" color="text.secondary">
                   What the manufacturer charged Hearing Hope.
                 </Typography>
@@ -2070,9 +2350,20 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
 
               <Grid item xs={12}>
                 <Divider sx={{ my: 1 }} />
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mt: 1 }}>
-                  Payment Received
-                </Typography>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <Typography variant="subtitle2" fontWeight={700} sx={{ mt: 1 }}>
+                    Payment Received
+                  </Typography>
+                  {mode === 'edit' && (formData.status === 'Ready for Pickup' || formData.status === 'Completed') && (
+                    <Chip
+                      label="Confirm payment now"
+                      size="small"
+                      color="success"
+                      icon={<CheckCircleIcon style={{ fontSize: 14 }} />}
+                      sx={{ mt: 1 }}
+                    />
+                  )}
+                </Stack>
               </Grid>
               <Grid item xs={12} sm={4}>
                 <TextField
@@ -2133,9 +2424,23 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                 Complete the tracking section above to continue.
               </Alert>
             )}
-            <Typography variant="h6" fontWeight={700} color="primary.main">
-              5. {FORM_SECTIONS[4].title}
-            </Typography>
+            <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+              <Typography variant="h6" fontWeight={700} color="primary.main">
+                5. {FORM_SECTIONS[4].title}
+              </Typography>
+              {mode === 'edit' && currentStatusStep.relevantSections.includes('Notes') && (
+                <Chip
+                  label="Relevant for current status"
+                  size="small"
+                  sx={{
+                    bgcolor: currentStatusStep.color + '22',
+                    color: currentStatusStep.color,
+                    fontWeight: 600,
+                    border: `1px solid ${currentStatusStep.color}44`,
+                  }}
+                />
+              )}
+            </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               {FORM_SECTIONS[4].subtitle}
             </Typography>

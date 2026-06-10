@@ -123,17 +123,7 @@ const theme = createTheme({
     },
     MuiDrawer: {
       styleOverrides: {
-        paper: { borderRight: '1px solid #E2E8F0', bgcolor: '#FAFBFC' },
-      },
-    },
-    MuiAppBar: {
-      styleOverrides: {
-        root: {
-          bgcolor: '#FFFFFF',
-          color: '#0F172A',
-          borderBottom: '1px solid #E2E8F0',
-          boxShadow: 'none',
-        },
+        paper: { border: 'none' },
       },
     },
     MuiTextField: {

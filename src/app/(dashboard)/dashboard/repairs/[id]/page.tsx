@@ -20,7 +20,14 @@ async function getRepair(id: string) {
     .single();
 
   if (error || !repair) return null;
-  return repair;
+
+  const { data: invoice } = await freshClient
+    .from('customer_tax_invoices')
+    .select('*')
+    .eq('repair_id', id)
+    .maybeSingle();
+
+  return { ...repair, customer_tax_invoice: invoice ?? null };
 }
 
 async function getCustomerVisitCount(customerId: string | null | undefined) {
@@ -61,8 +68,8 @@ export default async function RepairDetailPage({
       ]}
       actions={
         <RepairDetailActions
-          repairId={repair.id}
-          repairTrackingId={repair.repair_id}
+          repair={repair}
+          customerTaxInvoice={repair.customer_tax_invoice}
           autoDownloadReceipt={autoDownloadReceipt}
         />
       }

@@ -70,8 +70,26 @@ const columns: GridColDef[] = [
   {
     field: 'visit_number',
     headerName: 'Visit',
-    width: 80,
-    valueGetter: (params: GridValueGetterParams) => params.value ?? '-',
+    width: 90,
+    renderCell: (params) => {
+      const visit = params.row?.visit_number;
+      if (visit == null) return '-';
+      return (
+        <Chip
+          label={`Visit ${visit}`}
+          size="small"
+          variant="outlined"
+          sx={{
+            height: 24,
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            borderColor: 'rgba(238, 100, 23, 0.35)',
+            color: '#EE6417',
+            bgcolor: 'rgba(238, 100, 23, 0.06)',
+          }}
+        />
+      );
+    },
   },
   { field: 'patient_name', headerName: 'Patient Name', width: 200 },
   { 
@@ -140,7 +158,7 @@ const columns: GridColDef[] = [
     headerName: 'Received Date',
     width: 150,
     valueGetter: (params: GridValueGetterParams) =>
-      new Date(params.value).toLocaleDateString('en-US'),
+      params.value ? new Date(params.value as string).toLocaleDateString('en-US') : '-',
   },
   {
     field: 'warranty',
@@ -151,14 +169,14 @@ const columns: GridColDef[] = [
     field: 'warranty_after_repair',
     headerName: 'Repair Warranty',
     width: 150,
-    valueGetter: (params: GridValueGetterParams) =>
-      params.value || '-',
+    valueGetter: (params: GridValueGetterParams) => params.value || '-',
   },
   {
     field: 'current_location',
     headerName: 'Current Location',
     width: 180,
-    valueGetter: (params: GridValueGetterParams) => params.row.current_center?.name || params.row.current_location_type || '-',
+    valueGetter: (params: GridValueGetterParams) =>
+      params.row.current_center?.name || params.row.current_location_type || '-',
     renderCell: (params) => (
       <CurrentLocationBadge
         locationType={params.row.current_location_type}
@@ -183,8 +201,7 @@ const columns: GridColDef[] = [
     field: 'customer_paid',
     headerName: 'Amount Paid',
     width: 130,
-    valueFormatter: (params) =>
-      params.value ? `₹${params.value}` : '-',
+    valueFormatter: (params) => (params.value ? `₹${params.value}` : '-'),
   },
 ];
 
@@ -589,8 +606,8 @@ function RepairsContent() {
               rows={repairs}
               columns={columns}
               loading={loading}
-              components={{
-                Toolbar: GridToolbar,
+              slots={{
+                toolbar: GridToolbar,
               }}
               initialState={{
                 pagination: {

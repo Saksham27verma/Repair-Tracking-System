@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Box,
   Grid,
@@ -82,6 +82,7 @@ export default function DashboardCharts({
   const [lastUpdated, setLastUpdated] = useState<string>(
     initialTimestamp || new Date().toISOString()
   );
+  const hasAutoRetried = useRef(false);
 
   const fetchDashboardStats = useCallback(async (showSuccessMessage = false) => {
     setLoading(true);
@@ -121,6 +122,15 @@ export default function DashboardCharts({
       setLoading(false);
     }
   }, [showAlert]);
+
+  const initialTotal = initialStatusCounts.reduce((sum, s) => sum + s.count, 0);
+
+  useEffect(() => {
+    if (initialTotal === 0 && !hasAutoRetried.current) {
+      hasAutoRetried.current = true;
+      fetchDashboardStats(false);
+    }
+  }, [initialTotal, fetchDashboardStats]);
 
   const statusCards = [
     {

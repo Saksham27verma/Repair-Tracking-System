@@ -1,4 +1,4 @@
-import { createServerClient } from '@/lib/supabase/server';
+import { getFreshSupabaseClient } from '@/lib/supabase';
 
 export interface StatusCount {
   status: string;
@@ -35,17 +35,39 @@ export interface DashboardStatsData {
   timestamp: string;
 }
 
-export async function getDashboardStats(): Promise<DashboardStatsData> {
-  const supabase = createServerClient();
+async function fetchRepairsForDashboard(retries = 3) {
+  let lastError: Error | null = null;
 
-  const { data: repairs, error: repairsError } = await supabase
-    .from('repairs')
-    .select('status, created_at, current_center_id, pickup_center_id, current_location_type, receiving_center')
-    .order('updated_at', { ascending: false });
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const supabase = getFreshSupabaseClient();
+    const { data, error } = await supabase
+      .from('repairs')
+      .select('status, created_at, current_center_id, pickup_center_id, current_location_type, receiving_center')
+      .order('updated_at', { ascending: false });
 
-  if (repairsError) {
-    throw new Error(`Failed to fetch repairs: ${repairsError.message}`);
+    if (!error) {
+      return data;
+    }
+
+    lastError = new Error(`Failed to fetch repairs: ${error.message}`);
+    const isTransient =
+      error.message.includes('fetch failed') ||
+      error.message.includes('ECONNRESET') ||
+      error.message.includes('ETIMEDOUT');
+
+    if (!isTransient || attempt === retries) {
+      throw lastError;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, attempt * 400));
   }
+
+  throw lastError ?? new Error('Failed to fetch repairs');
+}
+
+export async function getDashboardStats(): Promise<DashboardStatsData> {
+  const supabase = getFreshSupabaseClient();
+  const repairs = await fetchRepairsForDashboard();
 
   const counts: Record<string, number> = {};
   repairs?.forEach((repair) => {

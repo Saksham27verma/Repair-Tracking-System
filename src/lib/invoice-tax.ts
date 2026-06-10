@@ -34,11 +34,13 @@ export function calculateTaxFromInclusive(
 
   const cgstRate = gstRate / 2;
   const sgstRate = gstRate / 2;
-  const netValue = roundMoney(grossValue / (1 + gstRate / 100));
-  const cgstAmount = roundMoney(netValue * (cgstRate / 100));
-  const sgstAmount = roundMoney(netValue * (sgstRate / 100));
-  const taxAmount = roundMoney(cgstAmount + sgstAmount);
-  const roundedGross = roundMoney(netValue + taxAmount);
+  const inputGross = roundMoney(grossValue);
+  const netValue = roundMoney(inputGross / (1 + gstRate / 100));
+  // Keep the original inclusive gross as authoritative; derive tax as the
+  // remainder so net + CGST + SGST always equals the input exactly.
+  const taxAmount = roundMoney(inputGross - netValue);
+  const cgstAmount = roundMoney(taxAmount / 2);
+  const sgstAmount = roundMoney(taxAmount - cgstAmount);
 
   return {
     netValue,
@@ -47,7 +49,7 @@ export function calculateTaxFromInclusive(
     cgstAmount,
     sgstAmount,
     taxAmount,
-    grossValue: roundedGross,
+    grossValue: inputGross,
     gstRate,
   };
 }

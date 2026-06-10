@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Helvetica, Arial, sans-serif; color: #1A202C; margin: 0; padding: 0; line-height: 1.4; }
+    .invoice-page { max-width: 800px; margin: 0 auto; padding: 25px; background: #fff; }
+    .brand-red { color: #A80000; }
+    .text-light { color: #4A5568; font-size: 11px; }
+    .text-muted { color: #718096; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+    .header-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+    .company-name { font-size: 20px; font-weight: 700; margin: 0; text-transform: uppercase; letter-spacing: -0.5px; }
+    .document-type { font-size: 10px; font-weight: 700; color: #A80000; text-transform: uppercase; letter-spacing: 2px; border: 1px solid #A80000; padding: 3px 10px; display: inline-block; margin-bottom: 5px; }
+    .party-grid { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+    .party-grid td { vertical-align: top; width: 50%; padding: 10px; border: 1px solid #EDF2F7; }
+    .party-title { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #A0AEC0; margin-bottom: 6px; }
+    .label { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #A0AEC0; margin-bottom: 2px; }
+    .order-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+    .order-table th { border-bottom: 1px solid #1A202C; padding: 8px 10px; text-align: left; font-size: 10px; text-transform: uppercase; font-weight: 700; color: #4A5568; }
+    .order-table td { border-bottom: 1px solid #EDF2F7; padding: 12px 10px; vertical-align: top; font-size: 13px; }
+    .tax-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+    .tax-table th, .tax-table td { border: 1px solid #EDF2F7; padding: 8px 10px; font-size: 12px; }
+    .tax-table th { background: #F9FAFB; font-size: 10px; text-transform: uppercase; color: #4A5568; }
+    .total-row td { font-weight: 700; background: #FFF5F5; }
+    .amount-words { background: #F7FAFC; border: 1px solid #EDF2F7; padding: 10px 12px; margin-bottom: 15px; font-size: 12px; }
+    .payment-box { background: #F0FFF4; border: 1px solid #C6F6D5; padding: 10px 12px; margin-bottom: 15px; font-size: 12px; }
+    .footer { margin-top: 20px; font-size: 9px; color: #A0AEC0; border-top: 1px dashed #EDF2F7; padding-top: 10px; text-align: center; }
+    .meta-line { font-size: 12px; margin-top: 5px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="invoice-page">
+    <table class="header-table">
+      <tr>
+        <td width="65%">
+          <img src="{{LOGO_SRC}}" style="width: 110px; margin-bottom: 5px;" alt="Logo"><br>
+          <h1 class="company-name brand-red">{{COMPANY_NAME}}</h1>
+          <div class="text-light">
+            {{COMPANY_ADDRESS}}<br>
+            <strong>GSTIN:</strong> {{COMPANY_GSTIN}} | <strong>State:</strong> {{COMPANY_STATE}} ({{COMPANY_STATE_CODE}})<br>
+            <strong>Contact:</strong> {{COMPANY_PHONE}} | <strong>Web:</strong> {{COMPANY_WEBSITE}}
+          </div>
+        </td>
+        <td width="35%" style="text-align: right; vertical-align: top;">
+          <div class="document-type">{{DOCUMENT_TYPE}}</div>
+          <div class="meta-line">
+            <span class="text-muted">Invoice No:</span> <strong>{{INVOICE_NUMBER}}</strong><br>
+            <span class="text-muted">Invoice Date:</span> <strong>{{INVOICE_DATE}}</strong><br>
+            <span class="text-muted">Repair ID:</span> <strong>{{REPAIR_ID}}</strong><br>
+            <span class="text-muted">Place of Supply:</span> <strong>{{PLACE_OF_SUPPLY}}</strong>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <table class="party-grid">
+      <tr>
+        <td>
+          <div class="party-title">Bill To</div>
+          <div style="font-size: 14px; font-weight: 700;">{{BUYER_NAME}}</div>
+          <div class="text-light" style="margin-top: 4px;">{{BUYER_CONTACT}}</div>
+        </td>
+        <td>
+          <div class="party-title">Service Centre</div>
+          <div style="font-size: 13px; font-weight: 600;">{{RECEIVING_CENTER}}</div>
+        </td>
+      </tr>
+    </table>
+
+    <table class="order-table">
+      <thead>
+        <tr>
+          <th style="width: 5%;">#</th>
+          <th style="width: 40%;">Description</th>
+          <th style="width: 10%;">HSN/SAC</th>
+          <th style="width: 8%;">Qty</th>
+          <th style="width: 17%;">Taxable Value</th>
+          <th style="width: 20%;">Total (Incl. GST)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{LINE_ITEMS}}
+      </tbody>
+    </table>
+
+    <table class="tax-table">
+      <thead>
+        <tr>
+          <th>Taxable Value</th>
+          <th>CGST @ {{CGST_RATE}}%</th>
+          <th>SGST @ {{SGST_RATE}}%</th>
+          <th>Total Tax</th>
+          <th>Gross Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="total-row">
+          <td>{{NET_AMOUNT}}</td>
+          <td>{{CGST_AMOUNT}}</td>
+          <td>{{SGST_AMOUNT}}</td>
+          <td>{{TAX_AMOUNT}}</td>
+          <td>{{GROSS_AMOUNT}}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="amount-words">
+      <strong>Amount in Words:</strong> {{AMOUNT_IN_WORDS}}
+    </div>
+
+    {{PAYMENT_SECTION}}
+
+    <div class="footer">
+      {{FOOTER_DISCLAIMER}}
+    </div>
+  </div>
+</body>
+</html>

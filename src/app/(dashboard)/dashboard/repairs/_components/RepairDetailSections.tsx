@@ -174,6 +174,23 @@ export default function RepairDetailSections({ repair, estimateStatus }: RepairD
               emphasize={Boolean(repair.customer_paid)}
             />
             <DetailRow label="Payment Mode" value={repair.payment_mode} />
+            {repair.customer_tax_invoice && (
+              <>
+                <DetailRow
+                  label="Tax Invoice No."
+                  value={repair.customer_tax_invoice.invoice_number}
+                  emphasize
+                />
+                <DetailRow
+                  label="Tax Invoice Date"
+                  value={formatDate(repair.customer_tax_invoice.invoice_date)}
+                />
+                <DetailRow
+                  label="Tax Invoice Amount"
+                  value={formatCurrency(repair.customer_tax_invoice.gross_amount)}
+                />
+              </>
+            )}
           </Box>
         </ContentCard>
       </Grid>

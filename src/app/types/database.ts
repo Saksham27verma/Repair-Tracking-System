@@ -379,6 +379,23 @@ export const HEARING_AID_MODELS = [
   'Other'
 ];
 
+export interface CustomerTaxInvoice {
+  id: string;
+  repair_id: string;
+  invoice_number: string;
+  invoice_date: string;
+  gross_amount: number;
+  gst_rate: number;
+  net_amount: number;
+  cgst_amount: number;
+  sgst_amount: number;
+  tax_amount: number;
+  payment_mode?: PaymentMode;
+  place_of_supply: string;
+  hsn_sac: string;
+  created_at: string;
+}
+
 export interface RepairRecord {
   id: string;
   repair_id: string;
@@ -445,6 +462,9 @@ export interface RepairRecord {
   // Additional Information
   programming_done?: boolean;
   remarks?: string;
+
+  // Customer tax invoice (joined)
+  customer_tax_invoice?: CustomerTaxInvoice | null;
 }
 
 export interface Customer {

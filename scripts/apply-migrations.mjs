@@ -86,6 +86,10 @@ async function bootstrapAppliedMigrations(client) {
     versions.push('20240703000000_add_repair_visit_number');
   }
 
+  if (await tableExists(client, 'customer_tax_invoices')) {
+    versions.push('20250610000000_add_customer_tax_invoices');
+  }
+
   return versions;
 }
 

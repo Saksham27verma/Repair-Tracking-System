@@ -1,12 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
   Button,
   Chip,
+  Divider,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
@@ -19,7 +22,7 @@ import toast from 'react-hot-toast';
 import PageShell from '@/app/components/ui/PageShell';
 import ContentCard from '@/app/components/ui/ContentCard';
 
-const PLACEHOLDERS = [
+const RECEIPT_PLACEHOLDERS = [
   '{{LOGO_SRC}}',
   '{{COMPANY_NAME}}',
   '{{COMPANY_ADDRESS}}',
@@ -43,57 +46,90 @@ const PLACEHOLDERS = [
   '{{FOOTER_TAG}}',
 ];
 
-export default function ReceiptTemplateSettingsPage() {
+const INVOICE_PLACEHOLDERS = [
+  '{{LOGO_SRC}}',
+  '{{COMPANY_NAME}}',
+  '{{COMPANY_ADDRESS}}',
+  '{{COMPANY_PHONE}}',
+  '{{COMPANY_WEBSITE}}',
+  '{{COMPANY_GSTIN}}',
+  '{{COMPANY_STATE}}',
+  '{{COMPANY_STATE_CODE}}',
+  '{{DOCUMENT_TYPE}}',
+  '{{INVOICE_NUMBER}}',
+  '{{INVOICE_DATE}}',
+  '{{REPAIR_ID}}',
+  '{{PLACE_OF_SUPPLY}}',
+  '{{BUYER_NAME}}',
+  '{{BUYER_CONTACT}}',
+  '{{RECEIVING_CENTER}}',
+  '{{LINE_ITEMS}}',
+  '{{CGST_RATE}}',
+  '{{SGST_RATE}}',
+  '{{NET_AMOUNT}}',
+  '{{CGST_AMOUNT}}',
+  '{{SGST_AMOUNT}}',
+  '{{TAX_AMOUNT}}',
+  '{{GROSS_AMOUNT}}',
+  '{{AMOUNT_IN_WORDS}}',
+  '{{PAYMENT_SECTION}}',
+  '{{FOOTER_DISCLAIMER}}',
+];
+
+interface TemplateEditorProps {
+  apiPath: string;
+  placeholders: string[];
+  previewHref: string | undefined;
+  previewLabel: string;
+  infoText: React.ReactNode;
+}
+
+function TemplateEditor({
+  apiPath,
+  placeholders,
+  previewHref,
+  previewLabel,
+  infoText,
+}: TemplateEditorProps) {
   const [html, setHtml] = useState('');
-  const [previewRepairId, setPreviewRepairId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mounted = useRef(false);
 
-  const loadTemplate = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/receipt-template', { cache: 'no-store' });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to load template');
-      }
+      const res = await fetch(apiPath, { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load template');
       setHtml(data.html || '');
-
-      const sampleResponse = await fetch('/api/receipt-template?sampleRepair=1', {
-        cache: 'no-store',
-      }).catch(() => null);
-      if (sampleResponse?.ok) {
-        const sampleData = await sampleResponse.json();
-        if (sampleData.repairId) {
-          setPreviewRepairId(sampleData.repairId);
-        }
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load template');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [apiPath]);
 
   useEffect(() => {
-    loadTemplate();
-  }, [loadTemplate]);
+    if (!mounted.current) {
+      mounted.current = true;
+      load();
+    }
+  }, [load]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const response = await fetch('/api/receipt-template', {
+      const res = await fetch(apiPath, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ html }),
       });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to save template');
-      }
-      toast.success('Receipt template saved');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save');
+      toast.success('Template saved');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save template');
     } finally {
@@ -102,19 +138,14 @@ export default function ReceiptTemplateSettingsPage() {
   };
 
   const handleReset = async () => {
-    if (!window.confirm('Reset the receipt template to the default version?')) {
-      return;
-    }
-
+    if (!window.confirm('Reset to the default template? Your changes will be lost.')) return;
     setSaving(true);
     try {
-      const response = await fetch('/api/receipt-template', { method: 'DELETE' });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to reset template');
-      }
+      const res = await fetch(apiPath, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to reset');
       setHtml(data.html || '');
-      toast.success('Receipt template reset to default');
+      toast.success('Template reset to default');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to reset template');
     } finally {
@@ -123,50 +154,41 @@ export default function ReceiptTemplateSettingsPage() {
   };
 
   return (
-    <PageShell
-      title="Receipt Template"
-      subtitle="Edit the HTML receipt layout and wording. Use Preview HTML to see the exact layout. PDF downloads use the same data, logo, and tracking instructions."
-      breadcrumbs={[
-        { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Receipt Template' },
-      ]}
-      actions={
-        <Stack direction="row" spacing={1}>
-          <Button
-            variant="outlined"
-            startIcon={<PreviewIcon />}
-            component="a"
-            href={
-              previewRepairId
-                ? `/api/repairs/${previewRepairId}/receipt?format=html`
-                : undefined
-            }
-            target="_blank"
-            rel="noopener noreferrer"
-            disabled={!previewRepairId}
-          >
-            Preview HTML
-          </Button>
-          <Button
-            variant="outlined"
-            color="warning"
-            startIcon={<ResetIcon />}
-            onClick={handleReset}
-            disabled={saving || loading}
-          >
-            Reset Default
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<SaveIcon />}
-            onClick={handleSave}
-            disabled={saving || loading}
-          >
-            {saving ? 'Saving…' : 'Save Template'}
-          </Button>
-        </Stack>
-      }
-    >
+    <Box>
+      <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mb: 2 }}>
+        <Button
+          variant="outlined"
+          startIcon={<PreviewIcon />}
+          component="a"
+          href={previewHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          disabled={!previewHref}
+          size="small"
+        >
+          {previewLabel}
+        </Button>
+        <Button
+          variant="outlined"
+          color="warning"
+          startIcon={<ResetIcon />}
+          onClick={handleReset}
+          disabled={saving || loading}
+          size="small"
+        >
+          Reset Default
+        </Button>
+        <Button
+          variant="contained"
+          startIcon={<SaveIcon />}
+          onClick={handleSave}
+          disabled={saving || loading}
+          size="small"
+        >
+          {saving ? 'Saving…' : 'Save Template'}
+        </Button>
+      </Stack>
+
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
@@ -174,20 +196,16 @@ export default function ReceiptTemplateSettingsPage() {
       )}
 
       <Alert severity="info" sx={{ mb: 3 }}>
-        Tracking instructions use <strong>{'{{TRACKING_INSTRUCTIONS}}'}</strong> and tell patients to
-        ask staff for the tracking link and log in with their phone number. Edit wording in{' '}
-        <code>src/lib/receipt/receipt-template.config.ts</code> or replace the placeholder directly
-        in the HTML below.
+        {infoText}
       </Alert>
 
       <ContentCard title="Available Placeholders" sx={{ mb: 3 }}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Keep these tags in the template. They are replaced with live repair data when generating a
-          receipt preview or PDF.
+          These tags are replaced with live data when generating a document.
         </Typography>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-          {PLACEHOLDERS.map((placeholder) => (
-            <Chip key={placeholder} label={placeholder} size="small" variant="outlined" />
+          {placeholders.map((p) => (
+            <Chip key={p} label={p} size="small" variant="outlined" />
           ))}
         </Box>
       </ContentCard>
@@ -197,10 +215,10 @@ export default function ReceiptTemplateSettingsPage() {
           value={html}
           onChange={(e) => setHtml(e.target.value)}
           multiline
-          minRows={24}
+          minRows={28}
           fullWidth
           disabled={loading}
-          placeholder="Loading receipt template…"
+          placeholder="Loading template…"
           sx={{
             '& .MuiInputBase-input': {
               fontFamily: 'monospace',
@@ -210,6 +228,87 @@ export default function ReceiptTemplateSettingsPage() {
           }}
         />
       </ContentCard>
+    </Box>
+  );
+}
+
+export default function TemplatesSettingsPage() {
+  const [tab, setTab] = useState(0);
+  const [receiptPreviewId, setReceiptPreviewId] = useState<string | null>(null);
+  const [invoicePreviewId, setInvoicePreviewId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/receipt-template?sampleRepair=1', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => d.repairId && setReceiptPreviewId(d.repairId))
+      .catch(() => null);
+
+    fetch('/api/invoice-template?sampleRepair=1', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => d.repairId && setInvoicePreviewId(d.repairId))
+      .catch(() => null);
+  }, []);
+
+  return (
+    <PageShell
+      title="Document Templates"
+      subtitle="Edit the HTML templates used when generating drop-off receipts and tax invoices."
+      breadcrumbs={[
+        { label: 'Dashboard', href: '/dashboard' },
+        { label: 'Document Templates' },
+      ]}
+    >
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Tabs value={tab} onChange={(_, v) => setTab(v)}>
+          <Tab label="Drop-Off Receipt" />
+          <Tab label="Tax Invoice" />
+        </Tabs>
+      </Box>
+
+      {tab === 0 && (
+        <TemplateEditor
+          apiPath="/api/receipt-template"
+          placeholders={RECEIPT_PLACEHOLDERS}
+          previewHref={
+            receiptPreviewId
+              ? `/api/repairs/${receiptPreviewId}/receipt?format=html`
+              : undefined
+          }
+          previewLabel="Preview Receipt"
+          infoText={
+            <>
+              Tracking instructions use{' '}
+              <strong>{'{{TRACKING_INSTRUCTIONS}}'}</strong> — patients are
+              directed to log in with their phone number. Edit wording in{' '}
+              <code>src/lib/receipt/receipt-template.config.ts</code> or
+              replace the placeholder directly in the HTML below.
+            </>
+          }
+        />
+      )}
+
+      {tab === 1 && (
+        <TemplateEditor
+          apiPath="/api/invoice-template"
+          placeholders={INVOICE_PLACEHOLDERS}
+          previewHref={
+            invoicePreviewId
+              ? `/api/repairs/${invoicePreviewId}/invoice?format=html`
+              : undefined
+          }
+          previewLabel="Preview Invoice"
+          infoText={
+            <>
+              Financial placeholders like{' '}
+              <strong>{'{{GROSS_AMOUNT}}'}</strong>,{' '}
+              <strong>{'{{CGST_AMOUNT}}'}</strong>, and{' '}
+              <strong>{'{{SGST_AMOUNT}}'}</strong> are computed from the stored
+              invoice snapshot. Update your real GSTIN in{' '}
+              <code>src/lib/receipt/receipt-template.config.ts</code>.
+            </>
+          }
+        />
+      )}
     </PageShell>
   );
 }
