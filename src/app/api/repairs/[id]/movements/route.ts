@@ -6,6 +6,7 @@ import {
   getStatusForMovement,
   MovementInput,
 } from '@/lib/tracking';
+import { validateRepairForStatus } from '@/lib/repair-stage-validation';
 import { MovementType } from '@/app/types/database';
 
 export async function GET(
@@ -66,7 +67,9 @@ export async function POST(
 
     const { data: repair, error: repairError } = await supabase
       .from('repairs')
-      .select('id, current_center_id, pickup_center_id, current_location_type')
+      .select(
+        'id, status, patient_name, phone, model_item_name, serial_no, warranty, purpose, current_center_id, pickup_center_id, current_location_type, date_out_to_manufacturer, date_received_from_manufacturer, date_out_to_customer, manufacturer_invoice_number, manufacturer_invoice_date, manufacturer_invoice_total, warranty_after_repair, customer_paid, payment_mode'
+      )
       .eq('id', params.id)
       .single();
 
@@ -134,6 +137,43 @@ export async function POST(
       movementInput.from_center_id = undefined;
     }
 
+    const repairFieldUpdates =
+      body.repair_updates && typeof body.repair_updates === 'object'
+        ? (body.repair_updates as Record<string, unknown>)
+        : {};
+
+    const now = new Date().toISOString();
+    const locationUpdate = deriveLocationFromMovement(movementInput);
+    const newStatus = getStatusForMovement(movementInput.movement_type);
+    const dateUpdates = getDateUpdatesForMovement(
+      movementInput.movement_type,
+      movementInput.shipped_at || movementInput.received_at || now
+    );
+
+    if (newStatus) {
+      const validation = validateRepairForStatus(newStatus, {
+        ...repair,
+        ...repairFieldUpdates,
+        ...dateUpdates,
+        status: newStatus,
+        current_center_id: locationUpdate.current_center_id || repair.current_center_id,
+        pickup_center_id:
+          movementInput.movement_type === 'ready_for_pickup' && movementInput.to_center_id
+            ? movementInput.to_center_id
+            : (repairFieldUpdates.pickup_center_id as string | undefined) || repair.pickup_center_id,
+      });
+
+      if (!validation.isValid) {
+        return NextResponse.json(
+          {
+            error: validation.message || `Cannot move repair to ${newStatus}`,
+            missing_fields: validation.missingFields,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const { data: movement, error: movementError } = await supabase
       .from('repair_movements')
       .insert({
@@ -151,19 +191,12 @@ export async function POST(
       return NextResponse.json({ error: movementError.message }, { status: 500 });
     }
 
-    const now = new Date().toISOString();
-    const locationUpdate = deriveLocationFromMovement(movementInput);
-    const newStatus = getStatusForMovement(movementInput.movement_type);
-    const dateUpdates = getDateUpdatesForMovement(
-      movementInput.movement_type,
-      movementInput.shipped_at || movementInput.received_at || now
-    );
-
     const repairUpdate: Record<string, unknown> = {
       current_location_type: locationUpdate.current_location_type,
       current_center_id: locationUpdate.current_center_id,
       updated_at: now,
       ...dateUpdates,
+      ...repairFieldUpdates,
     };
 
     if (newStatus) {

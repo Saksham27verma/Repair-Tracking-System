@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
 import { EstimateStatus } from '@/app/types/database';
 import { getFreshSupabaseClient, refreshSchemaCache } from '@/lib/supabase';
+import { validateRepairForStatus } from '@/lib/repair-stage-validation';
 
 export async function POST(request: NextRequest) {
   console.log('⭐ Estimate approval API called');
@@ -37,7 +38,9 @@ export async function POST(request: NextRequest) {
     console.log(`🔍 Looking up repair with repair_id: ${repairId}`);
     const { data: existingRepair, error: findError } = await freshSupabase
       .from('repairs')
-      .select('id, status, repair_estimate_by_company, estimate_status')
+      .select(
+        'id, status, patient_name, phone, model_item_name, serial_no, warranty, purpose, current_center_id, pickup_center_id, date_out_to_manufacturer, date_received_from_manufacturer, date_out_to_customer, manufacturer_invoice_number, manufacturer_invoice_date, manufacturer_invoice_total, warranty_after_repair, customer_paid, payment_mode, repair_estimate_by_company, estimate_status'
+      )
       .eq('repair_id', repairId)
       .single();
 
@@ -64,6 +67,7 @@ export async function POST(request: NextRequest) {
       estimate_status: EstimateStatus;
       estimate_approval_date: string;
       status?: string;
+      date_received_from_manufacturer?: string;
     } = {
       estimate_status: status as EstimateStatus,
       estimate_approval_date: new Date().toISOString()
@@ -72,7 +76,28 @@ export async function POST(request: NextRequest) {
     // If declining the estimate, update the repair status to "Returned from Manufacturer"
     // but only if currently in "Sent to Company for Repair" status
     if (status === 'Declined' && existingRepair.status === 'Sent to Company for Repair') {
+      const now = new Date().toISOString();
+      const validation = validateRepairForStatus('Returned from Manufacturer', {
+        ...existingRepair,
+        status: 'Returned from Manufacturer',
+        date_received_from_manufacturer: existingRepair.date_received_from_manufacturer || now,
+      });
+      if (!validation.isValid) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              validation.message ||
+              'Cannot mark repair as returned from manufacturer until required fields are filled.',
+            missing_fields: validation.missingFields,
+          },
+          { status: 400 }
+        );
+      }
+
       updateData.status = 'Returned from Manufacturer';
+      updateData.date_received_from_manufacturer =
+        existingRepair.date_received_from_manufacturer || now;
     }
 
     console.log('📝 Update data:', JSON.stringify(updateData));

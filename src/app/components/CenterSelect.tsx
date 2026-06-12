@@ -13,6 +13,8 @@ interface CenterSelectProps {
   disabled?: boolean;
   allowEmpty?: boolean;
   emptyLabel?: string;
+  error?: boolean;
+  helperText?: string;
 }
 
 export default function CenterSelect({
@@ -24,6 +26,8 @@ export default function CenterSelect({
   disabled,
   allowEmpty = false,
   emptyLabel = 'Select center',
+  error = false,
+  helperText,
 }: CenterSelectProps) {
   const [centers, setCenters] = useState<Center[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +53,8 @@ export default function CenterSelect({
       required={required}
       disabled={disabled || loading}
       size="small"
+      error={error}
+      helperText={helperText}
     >
       {allowEmpty && (
         <MenuItem value="">

@@ -1,33 +1,70 @@
 'use client';
 
-import PageShell from '@/app/components/ui/PageShell';
-import RepairForm from '../../_components/RepairForm';
+import { Suspense, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { Alert, Box, Button } from '@mui/material';
 import { supabase } from '@/lib/supabase';
-import { notFound } from 'next/navigation';
+import { RepairRecord } from '@/app/types/database';
+import PageShell from '@/app/components/ui/PageShell';
+import LoadingSpinner from '@/app/components/LoadingSpinner';
+import RepairForm from '../../_components/RepairForm';
 
-async function getRepair(id: string) {
-  const { data: repair, error } = await supabase
-    .from('repairs')
-    .select('*')
-    .eq('id', id)
-    .single();
+function EditRepairPageInner() {
+  const params = useParams();
+  const repairId = params.id as string;
+  const [repair, setRepair] = useState<RepairRecord | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
 
-  if (error || !repair) {
-    return null;
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRepair() {
+      setLoading(true);
+      setNotFound(false);
+
+      const { data, error } = await supabase
+        .from('repairs')
+        .select('*')
+        .eq('id', repairId)
+        .single();
+
+      if (cancelled) return;
+
+      if (error || !data) {
+        console.error('Failed to load repair for edit:', error);
+        setRepair(null);
+        setNotFound(true);
+      } else {
+        setRepair(data);
+      }
+
+      setLoading(false);
+    }
+
+    loadRepair();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [repairId]);
+
+  if (loading) {
+    return <LoadingSpinner />;
   }
 
-  return repair;
-}
-
-export default async function EditRepairPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const repair = await getRepair(params.id);
-
-  if (!repair) {
-    notFound();
+  if (notFound || !repair) {
+    return (
+      <Box sx={{ py: 6, textAlign: 'center' }}>
+        <Alert severity="warning" sx={{ mb: 3, textAlign: 'left' }}>
+          This repair could not be found. It may have been deleted or the link is incorrect.
+        </Alert>
+        <Button component={Link} href="/dashboard/repairs" variant="contained">
+          Back to Repairs
+        </Button>
+      </Box>
+    );
   }
 
   return (
@@ -44,4 +81,12 @@ export default async function EditRepairPage({
       <RepairForm repair={repair} mode="edit" />
     </PageShell>
   );
-} 
+}
+
+export default function EditRepairPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <EditRepairPageInner />
+    </Suspense>
+  );
+}

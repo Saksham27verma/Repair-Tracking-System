@@ -20,18 +20,27 @@ import {
   LocationType,
   CurrentLocationType,
   RepairMovement,
+  RepairRecord,
 } from '@/app/types/database';
 import CenterSelect from './CenterSelect';
+import StageTransitionFields from './StageTransitionFields';
 import {
   type RepairUpdatePayload,
   getAvailableMovementOptions,
   inferCenterFromMovements,
 } from '@/lib/tracking';
+import {
+  MOVEMENT_TO_STATUS,
+  TransitionFieldValues,
+  buildRepairUpdatesFromTransition,
+  validateTransitionFields,
+} from '@/lib/repair-stage-validation';
 
 interface TransferDialogProps {
   open: boolean;
   onClose: () => void;
   repairId: string;
+  repair?: Partial<RepairRecord>;
   currentCenterId?: string;
   currentCenterName?: string;
   currentLocationType?: CurrentLocationType;
@@ -63,7 +72,7 @@ const MOVEMENT_OPTIONS: {
   {
     value: 'returned_from_manufacturer',
     label: 'Return from Manufacturer',
-    description: 'Device received back from manufacturer at a center',
+    description: 'Device received back — enter manufacturer invoice and warranty below',
     toType: 'center',
     needsCenter: true,
   },
@@ -77,16 +86,37 @@ const MOVEMENT_OPTIONS: {
   {
     value: 'delivered',
     label: 'Delivered to Customer',
-    description: 'Device handed back to the customer',
+    description: 'Device handed back — confirm payment received below',
     toType: 'customer',
     needsCenter: false,
   },
 ];
 
+function buildInitialTransitionValues(repair?: Partial<RepairRecord>): TransitionFieldValues {
+  const markup =
+    repair?.estimate_by_us ??
+    (repair?.repair_estimate_by_company && repair?.manufacturer_invoice_total
+      ? Math.max(0, repair.repair_estimate_by_company - repair.manufacturer_invoice_total)
+      : null);
+
+  return {
+    manufacturer_invoice_number: repair?.manufacturer_invoice_number || '',
+    manufacturer_invoice_date: repair?.manufacturer_invoice_date || null,
+    manufacturer_invoice_total: repair?.manufacturer_invoice_total ?? null,
+    manufacturer_invoice_gst_rate: repair?.manufacturer_invoice_gst_rate ?? 18,
+    warranty_after_repair: repair?.warranty_after_repair || '',
+    hope_markup: markup,
+    customer_paid: repair?.customer_paid ?? null,
+    payment_mode: repair?.payment_mode || null,
+    pickup_center_id: repair?.pickup_center_id || '',
+  };
+}
+
 export default function TransferDialog({
   open,
   onClose,
   repairId,
+  repair,
   currentCenterId,
   currentCenterName,
   currentLocationType,
@@ -99,6 +129,10 @@ export default function TransferDialog({
   const [trackingNumber, setTrackingNumber] = useState('');
   const [expectedArrival, setExpectedArrival] = useState('');
   const [notes, setNotes] = useState('');
+  const [transitionValues, setTransitionValues] = useState<TransitionFieldValues>(() =>
+    buildInitialTransitionValues(repair)
+  );
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -117,6 +151,15 @@ export default function TransferDialog({
     [availableOptionTypes]
   );
 
+  const targetStatus = MOVEMENT_TO_STATUS[movementType];
+
+  useEffect(() => {
+    if (!open) return;
+    setTransitionValues(buildInitialTransitionValues(repair));
+    setFieldErrors({});
+    setError('');
+  }, [open, repair]);
+
   useEffect(() => {
     if (!open) return;
     if (availableOptions.length === 0) return;
@@ -131,10 +174,52 @@ export default function TransferDialog({
 
   const handleSubmit = async () => {
     setError('');
+    setFieldErrors({});
     setLoading(true);
 
     try {
       if (!selectedOption) return;
+
+      if (selectedOption.needsCenter && !toCenterId) {
+        setError('Please select a destination center');
+        setLoading(false);
+        return;
+      }
+
+      if (movementType === 'sent_to_manufacturer' && !effectiveCenterId && !currentLocationType) {
+        setError('Could not determine which center is sending the device. Log a received movement first.');
+        setLoading(false);
+        return;
+      }
+
+      const transitionPayload: TransitionFieldValues = {
+        ...transitionValues,
+        ...(movementType === 'ready_for_pickup' && toCenterId
+          ? { pickup_center_id: toCenterId }
+          : {}),
+      };
+
+      if (targetStatus) {
+        const validation = validateTransitionFields(targetStatus, transitionPayload, {
+          ...repair,
+          current_center_id: repair?.current_center_id || currentCenterId,
+          receiving_center_id: repair?.current_center_id || currentCenterId,
+        });
+
+        if (!validation.isValid) {
+          const nextErrors = validation.missingFields.reduce<Record<string, string>>(
+            (acc, field) => {
+              acc[field] = 'Required for this step';
+              return acc;
+            },
+            {}
+          );
+          setFieldErrors(nextErrors);
+          setError(validation.message || 'Complete the required fields for this step.');
+          setLoading(false);
+          return;
+        }
+      }
 
       const now = new Date().toISOString();
       const isShipped =
@@ -175,19 +260,8 @@ export default function TransferDialog({
             : movementType === 'center_transfer' && !carrier && !trackingNumber
               ? now
               : undefined,
+        repair_updates: buildRepairUpdatesFromTransition(transitionPayload),
       };
-
-      if (selectedOption.needsCenter && !toCenterId) {
-        setError('Please select a destination center');
-        setLoading(false);
-        return;
-      }
-
-      if (movementType === 'sent_to_manufacturer' && !fromCenterId && !currentLocationType) {
-        setError('Could not determine which center is sending the device. Log a received movement first.');
-        setLoading(false);
-        return;
-      }
 
       const res = await fetch(`/api/repairs/${repairId}/movements`, {
         method: 'POST',
@@ -198,6 +272,16 @@ export default function TransferDialog({
       const data = await res.json();
 
       if (!res.ok) {
+        if (Array.isArray(data.missing_fields) && data.missing_fields.length > 0) {
+          const nextErrors = data.missing_fields.reduce(
+            (acc: Record<string, string>, field: string) => {
+              acc[field] = 'Required for this step';
+              return acc;
+            },
+            {}
+          );
+          setFieldErrors(nextErrors);
+        }
         throw new Error(data.error || 'Failed to log movement');
       }
 
@@ -209,6 +293,7 @@ export default function TransferDialog({
       setTrackingNumber('');
       setExpectedArrival('');
       setNotes('');
+      setTransitionValues(buildInitialTransitionValues(repair));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -217,7 +302,18 @@ export default function TransferDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth={
+        targetStatus === 'Returned from Manufacturer' ||
+        targetStatus === 'Completed' ||
+        targetStatus === 'Ready for Pickup'
+          ? 'md'
+          : 'sm'
+      }
+      fullWidth
+    >
       <DialogTitle sx={{ fontWeight: 700 }}>Log Device Movement</DialogTitle>
       <DialogContent>
         {(currentCenterName || effectiveCenterId) && (
@@ -244,7 +340,11 @@ export default function TransferDialog({
                 fullWidth
                 label="What happened?"
                 value={movementType}
-                onChange={(e) => setMovementType(e.target.value as MovementType)}
+                onChange={(e) => {
+                  setMovementType(e.target.value as MovementType);
+                  setFieldErrors({});
+                  setError('');
+                }}
                 size="small"
               >
                 {availableOptions.map((opt) => (
@@ -268,6 +368,23 @@ export default function TransferDialog({
                   value={toCenterId}
                   onChange={setToCenterId}
                   required
+                  error={Boolean(fieldErrors.pickup_center_id)}
+                  helperText={fieldErrors.pickup_center_id}
+                />
+              </Grid>
+            )}
+
+            {targetStatus && (
+              <Grid item xs={12}>
+                <StageTransitionFields
+                  targetStatus={targetStatus}
+                  values={transitionValues}
+                  onChange={(values) => {
+                    setTransitionValues(values);
+                    setFieldErrors({});
+                  }}
+                  errors={fieldErrors}
+                  hidePickupCenter={movementType === 'ready_for_pickup'}
                 />
               </Grid>
             )}

@@ -48,6 +48,7 @@ import {
   CalendarToday as CalendarTodayIcon,
 } from '@mui/icons-material';
 import CenterSelect from '@/app/components/CenterSelect';
+import StageTransitionFields from '@/app/components/StageTransitionFields';
 import { getMovementForStatusChange } from '@/lib/tracking';
 // Comment out problematic import and use direct imports from database.ts
 // import { Database } from '@/app/types/supabase';
@@ -71,6 +72,12 @@ import {
 import { inferDeviceFormat } from '@/lib/device-format';
 import { calculateTaxFromInclusive, formatCurrency, GST_RATE_OPTIONS } from '@/lib/invoice-tax';
 import { getCustomerVisitStatsByPhone, type CustomerVisitStats } from '@/lib/customer-visits';
+import {
+  getTransitionFieldsForStatus,
+  validateRepairForStatus,
+  validateTransitionFields,
+  type TransitionFieldValues,
+} from '@/lib/repair-stage-validation';
 import Link from 'next/link';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -615,6 +622,31 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
   const [loading, setLoading] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [statusChanged, setStatusChanged] = useState<{ repairId: string; oldStatus: RepairStatus; newStatus: RepairStatus } | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const clearFieldError = useCallback((fieldName: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[fieldName]) return prev;
+      const next = { ...prev };
+      delete next[fieldName];
+      return next;
+    });
+  }, []);
+
+  const setStageValidationErrors = useCallback(
+    (
+      validation: ReturnType<typeof validateRepairForStatus>,
+      fallbackMessage = 'Complete all required fields for this stage.'
+    ) => {
+      const nextErrors = validation.missingFields.reduce<Record<string, string>>((acc, field) => {
+        acc[field] = 'Required for this stage';
+        return acc;
+      }, {});
+      setFieldErrors(nextErrors);
+      setError(validation.message || fallbackMessage);
+    },
+    []
+  );
 
   const getVisitTabLabel = useCallback(
     (index: number) => {
@@ -759,6 +791,51 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
 
   const currentStatusIndex = getStatusIndex(formData.status);
   const currentStatusStep = STATUS_STEPS[currentStatusIndex] ?? STATUS_STEPS[0];
+  const nextStatusStep =
+    currentStatusIndex < STATUS_STEPS.length - 1
+      ? STATUS_STEPS[currentStatusIndex + 1]
+      : null;
+
+  const transitionFieldValues = useMemo<TransitionFieldValues>(
+    () => ({
+      manufacturer_invoice_number: formData.manufacturer_invoice_number,
+      manufacturer_invoice_date: formData.manufacturer_invoice_date,
+      manufacturer_invoice_total: formData.manufacturer_invoice_total,
+      manufacturer_invoice_gst_rate: formData.manufacturer_invoice_gst_rate,
+      warranty_after_repair: formData.warranty_after_repair,
+      hope_markup: formData.hope_markup,
+      customer_paid: formData.customer_paid,
+      payment_mode: formData.payment_mode,
+      pickup_center_id: formData.pickup_center_id,
+    }),
+    [formData]
+  );
+
+  const applyTransitionFieldValues = useCallback((values: TransitionFieldValues) => {
+    setFormData((prev) => ({
+      ...prev,
+      manufacturer_invoice_number: values.manufacturer_invoice_number ?? prev.manufacturer_invoice_number,
+      manufacturer_invoice_date: values.manufacturer_invoice_date ?? prev.manufacturer_invoice_date,
+      manufacturer_invoice_total:
+        values.manufacturer_invoice_total !== undefined
+          ? values.manufacturer_invoice_total
+          : prev.manufacturer_invoice_total,
+      manufacturer_invoice_gst_rate:
+        values.manufacturer_invoice_gst_rate ?? prev.manufacturer_invoice_gst_rate,
+      warranty_after_repair:
+        values.warranty_after_repair !== undefined
+          ? (values.warranty_after_repair as WarrantyAfterRepair | '')
+          : prev.warranty_after_repair,
+      hope_markup: values.hope_markup !== undefined ? values.hope_markup : prev.hope_markup,
+      customer_paid: values.customer_paid !== undefined ? values.customer_paid : prev.customer_paid,
+      payment_mode:
+        values.payment_mode !== undefined
+          ? (values.payment_mode as PaymentMode | null)
+          : prev.payment_mode,
+      pickup_center_id: values.pickup_center_id ?? prev.pickup_center_id,
+    }));
+    Object.keys(values).forEach((key) => clearFieldError(key));
+  }, [clearFieldError]);
 
   const setSectionRef = useCallback(
     (index: number) => (el: HTMLDivElement | null) => {
@@ -803,6 +880,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    clearFieldError(name);
     setFormData((prev) => {
       const next = { ...prev, [name]: value };
       if (
@@ -853,22 +931,42 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
     const newStatus = e.target.value as RepairStatus;
     const now = new Date().toISOString();
     const oldStatus = formData.status;
-    
-    setFormData((prev) => ({
-      ...prev,
+
+    const candidateData: FormState = {
+      ...formData,
       status: newStatus,
       ...(newStatus === 'Sent to Company for Repair' && {
-        date_out_to_manufacturer: now,
+        date_out_to_manufacturer: formData.date_out_to_manufacturer || now,
       }),
       ...(newStatus === 'Returned from Manufacturer' && {
-        date_received_from_manufacturer: now,
+        date_received_from_manufacturer: formData.date_received_from_manufacturer || now,
       }),
       ...(newStatus === 'Completed' && {
-        date_out_to_customer: now,
+        date_out_to_customer: formData.date_out_to_customer || now,
       }),
-    }));
+    };
 
-    // Track status change for notification later
+    if (mode === 'edit') {
+      const hasTransitionFields = getTransitionFieldsForStatus(newStatus).length > 0;
+      const validation = hasTransitionFields
+        ? validateTransitionFields(newStatus, transitionFieldValues, {
+            ...candidateData,
+            receiving_center_id: candidateData.receiving_center_id || undefined,
+          })
+        : validateRepairForStatus(newStatus, {
+            ...candidateData,
+            receiving_center_id: candidateData.receiving_center_id || undefined,
+          });
+      if (!validation.isValid) {
+        setStageValidationErrors(validation, `Cannot move to ${newStatus}.`);
+        return;
+      }
+    }
+
+    setError(null);
+    setFieldErrors({});
+    setFormData(candidateData);
+
     if (repair?.id && oldStatus !== newStatus) {
       setStatusChanged({
         repairId: repair.id,
@@ -876,6 +974,13 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
         newStatus
       });
     }
+  };
+
+  const handleAdvanceStatus = () => {
+    if (!nextStatusStep) return;
+    handleStatusChange({
+      target: { value: nextStatusStep.status },
+    } as React.ChangeEvent<HTMLInputElement>);
   };
 
   const handleDeviceFormatChange = (format: DeviceFormat) => {
@@ -904,6 +1009,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
+    setFieldErrors({});
     setLoading(true);
 
     try {
@@ -965,6 +1071,15 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
 
         const createdIds: string[] = [];
         for (const tab of allTabs) {
+          const tabValidation = validateRepairForStatus('Received', {
+            ...tab.formData,
+            status: 'Received',
+            receiving_center_id: tab.formData.receiving_center_id || undefined,
+          });
+          if (!tabValidation.isValid) {
+            throw new Error(`Visit tab has missing fields: ${tabValidation.missingLabels.join(', ')}`);
+          }
+
           const { dbData, dateOfReceipt, now } = buildRepairDbData(tab.formData, customerId);
           const uuid =
             typeof window !== 'undefined' && window.crypto?.randomUUID
@@ -1036,6 +1151,17 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
 
       if (formData.device_format === 'kit' && !formData.serial_no_2?.trim()) {
         throw new Error('Right ear serial number is required for a pair kit');
+      }
+
+      const targetStatus: RepairStatus = mode === 'edit' ? formData.status : 'Received';
+      const stageValidation = validateRepairForStatus(targetStatus, {
+        ...formData,
+        status: targetStatus,
+        receiving_center_id: formData.receiving_center_id || undefined,
+      });
+      if (!stageValidation.isValid) {
+        setStageValidationErrors(stageValidation);
+        throw new Error(stageValidation.message || 'Missing required stage fields');
       }
 
       // Check for connectivity before proceeding
@@ -1635,6 +1761,17 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   ))}
                 </Stack>
               )}
+
+              {getTransitionFieldsForStatus(formData.status).length > 0 && (
+                <Box sx={{ mt: 2 }}>
+                  <StageTransitionFields
+                    targetStatus={formData.status}
+                    values={transitionFieldValues}
+                    onChange={applyTransitionFieldValues}
+                    errors={fieldErrors}
+                  />
+                </Box>
+              )}
             </Box>
 
             {/* Right: date field for this status */}
@@ -1673,19 +1810,26 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                 </LocalizationProvider>
               )}
 
-              {/* Advance button */}
-              {currentStatusIndex < STATUS_STEPS.length - 1 && (
+              {nextStatusStep &&
+                getTransitionFieldsForStatus(nextStatusStep.status).length > 0 && (
+                  <Box sx={{ mt: 1.5 }}>
+                    <StageTransitionFields
+                      targetStatus={nextStatusStep.status}
+                      values={transitionFieldValues}
+                      onChange={applyTransitionFieldValues}
+                      errors={fieldErrors}
+                    />
+                  </Box>
+                )}
+
+              {nextStatusStep && (
                 <Button
                   size="small"
                   variant="contained"
                   endIcon={<ArrowForwardIcon />}
-                  onClick={() =>
-                    handleStatusChange({
-                      target: { value: STATUS_STEPS[currentStatusIndex + 1].status },
-                    } as React.ChangeEvent<HTMLInputElement>)
-                  }
+                  onClick={handleAdvanceStatus}
                   sx={{
-                    mt: currentStatusStep.dateField ? 1.5 : 0,
+                    mt: 1.5,
                     bgcolor: currentStatusStep.color,
                     '&:hover': { bgcolor: currentStatusStep.color + 'DD' },
                     textTransform: 'none',
@@ -1693,7 +1837,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                     width: '100%',
                   }}
                 >
-                  Move to: {STATUS_STEPS[currentStatusIndex + 1].label}
+                  Move to: {nextStatusStep.label}
                 </Button>
               )}
             </Box>
@@ -2104,6 +2248,8 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   name="warranty_after_repair"
                   value={formData.warranty_after_repair || ''}
                   onChange={handleChange}
+                  error={Boolean(fieldErrors.warranty_after_repair)}
+                  helperText={fieldErrors.warranty_after_repair}
                 >
                   <MenuItem value="">Select Warranty</MenuItem>
                   <MenuItem value="6 months">6 months</MenuItem>
@@ -2154,6 +2300,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
               name="receiving_center_id"
               value={formData.receiving_center_id}
               onChange={(val) => {
+                clearFieldError('receiving_center_id');
                 const center = centers.find((c) => c.id === val);
                 setFormData((prev) => ({
                   ...prev,
@@ -2162,6 +2309,8 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                 }));
               }}
               required
+              error={Boolean(fieldErrors.receiving_center_id)}
+              helperText={fieldErrors.receiving_center_id}
             />
           </Grid>
           <Grid item xs={12}>
@@ -2243,6 +2392,8 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   name="manufacturer_invoice_number"
                   value={formData.manufacturer_invoice_number}
                   onChange={handleChange}
+                  error={Boolean(fieldErrors.manufacturer_invoice_number)}
+                  helperText={fieldErrors.manufacturer_invoice_number}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -2250,13 +2401,20 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   <DatePicker
                     label="Invoice Date"
                     value={formData.manufacturer_invoice_date ? dayjs(formData.manufacturer_invoice_date) : null}
-                    onChange={(date: Dayjs | null) =>
+                    onChange={(date: Dayjs | null) => {
+                      clearFieldError('manufacturer_invoice_date');
                       setFormData((prev) => ({
                         ...prev,
                         manufacturer_invoice_date: date?.isValid() ? date.format('YYYY-MM-DD') : null,
-                      }))
-                    }
-                    slotProps={{ textField: { fullWidth: true } }}
+                      }));
+                    }}
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        error: Boolean(fieldErrors.manufacturer_invoice_date),
+                        helperText: fieldErrors.manufacturer_invoice_date,
+                      },
+                    }}
                   />
                 </LocalizationProvider>
               </Grid>
@@ -2283,7 +2441,8 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   value={formData.manufacturer_invoice_total ?? ''}
                   onChange={handleChange}
                   InputProps={{ inputProps: { min: 0, step: 0.01 }, startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
-                  helperText="Gross amount on the manufacturer's invoice"
+                  error={Boolean(fieldErrors.manufacturer_invoice_total)}
+                  helperText={fieldErrors.manufacturer_invoice_total || 'Gross amount on the manufacturer\'s invoice'}
                 />
               </Grid>
               {Number(formData.manufacturer_invoice_total) > 0 && (
@@ -2374,6 +2533,8 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   value={formData.customer_paid || ''}
                   onChange={handleChange}
                   InputProps={{ inputProps: { min: 0, step: 0.01 }, startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
+                  error={Boolean(fieldErrors.customer_paid)}
+                  helperText={fieldErrors.customer_paid}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -2384,6 +2545,8 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   name="payment_mode"
                   value={formData.payment_mode || ''}
                   onChange={handleChange}
+                  error={Boolean(fieldErrors.payment_mode)}
+                  helperText={fieldErrors.payment_mode}
                 >
                   <MenuItem value="Cash">Cash</MenuItem>
                   <MenuItem value="Card">Card</MenuItem>

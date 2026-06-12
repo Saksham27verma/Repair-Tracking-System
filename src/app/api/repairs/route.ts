@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { getAdminSupabaseClient } from '@/lib/supabase';
 import { refreshSchemaCache } from '@/lib/supabase';
 import { notifyUser } from '@/lib/notifications';
+import { validateRepairForStatus } from '@/lib/repair-stage-validation';
 
 export async function POST(request: Request) {
   try {
@@ -52,7 +53,9 @@ export async function PUT(request: Request) {
     // Get the current status before update
     const { data: currentRepair, error: fetchError } = await supabase
       .from('repairs')
-      .select('status, notification_preference, email, phone, patient_name, repair_id')
+      .select(
+        'status, notification_preference, email, phone, patient_name, repair_id, model_item_name, serial_no, warranty, purpose, current_center_id, pickup_center_id, date_out_to_manufacturer, date_received_from_manufacturer, date_out_to_customer, manufacturer_invoice_number, manufacturer_invoice_date, manufacturer_invoice_total, warranty_after_repair, customer_paid, payment_mode'
+      )
       .eq('id', id)
       .single();
       
@@ -62,6 +65,25 @@ export async function PUT(request: Request) {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       });
+    }
+
+    if (updateData.status && updateData.status !== currentRepair.status) {
+      const validation = validateRepairForStatus(updateData.status, {
+        ...currentRepair,
+        ...updateData,
+      });
+      if (!validation.isValid) {
+        return new Response(
+          JSON.stringify({
+            error: validation.message || `Cannot move repair to ${updateData.status}`,
+            missing_fields: validation.missingFields,
+          }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
+      }
     }
 
     // Update the repair

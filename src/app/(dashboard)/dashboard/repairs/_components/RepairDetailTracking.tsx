@@ -138,6 +138,7 @@ export default function RepairDetailTracking({
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         repairId={repairId}
+        repair={repair}
         currentCenterId={currentCenterId}
         currentCenterName={currentCenterName}
         currentLocationType={currentLocationType}
