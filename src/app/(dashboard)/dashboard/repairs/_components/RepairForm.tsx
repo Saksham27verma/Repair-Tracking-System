@@ -76,8 +76,12 @@ import {
   getTransitionFieldsForStatus,
   validateRepairForStatus,
   validateTransitionFields,
+  mapStageFieldErrors,
   type TransitionFieldValues,
 } from '@/lib/repair-stage-validation';
+import ManufacturerInvoiceFocConfirm, {
+  isExplicitZeroInvoiceTotal,
+} from '@/app/components/ManufacturerInvoiceFocConfirm';
 import Link from 'next/link';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -153,6 +157,7 @@ interface FormState {
   manufacturer_invoice_date: string | null;
   manufacturer_invoice_total: number | null;
   manufacturer_invoice_gst_rate: number;
+  manufacturer_invoice_is_foc: boolean;
 }
 
 interface Props {
@@ -206,6 +211,7 @@ const initialFormData: FormState = {
   manufacturer_invoice_date: null,
   manufacturer_invoice_total: null,
   manufacturer_invoice_gst_rate: 18,
+  manufacturer_invoice_is_foc: false,
 };
 
 const FORM_SECTIONS = [
@@ -419,6 +425,7 @@ function buildRepairDbData(tabFormData: FormState, customerId: string) {
           ? Number(tabFormData.manufacturer_invoice_total)
           : null,
       manufacturer_invoice_gst_rate: Number(tabFormData.manufacturer_invoice_gst_rate) || 18,
+      manufacturer_invoice_is_foc: tabFormData.manufacturer_invoice_is_foc || false,
       ...(Number(tabFormData.manufacturer_invoice_total) > 0
         ? (() => {
             const breakdown = calculateTaxFromInclusive(
@@ -546,6 +553,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
         manufacturer_invoice_date: repair.manufacturer_invoice_date || null,
         manufacturer_invoice_total: repair.manufacturer_invoice_total ?? null,
         manufacturer_invoice_gst_rate: repair.manufacturer_invoice_gst_rate ?? 18,
+        manufacturer_invoice_is_foc: repair.manufacturer_invoice_is_foc ?? false,
       };
     } else {
       // New repair - use defaults + generate ID
@@ -636,12 +644,15 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
   const setStageValidationErrors = useCallback(
     (
       validation: ReturnType<typeof validateRepairForStatus>,
-      fallbackMessage = 'Complete all required fields for this stage.'
+      fallbackMessage = 'Complete all required fields for this stage.',
+      transitionValues?: TransitionFieldValues
     ) => {
-      const nextErrors = validation.missingFields.reduce<Record<string, string>>((acc, field) => {
-        acc[field] = 'Required for this stage';
-        return acc;
-      }, {});
+      const nextErrors = transitionValues
+        ? mapStageFieldErrors(validation, transitionValues)
+        : validation.missingFields.reduce<Record<string, string>>((acc, field) => {
+            acc[field] = 'Required for this stage';
+            return acc;
+          }, {});
       setFieldErrors(nextErrors);
       setError(validation.message || fallbackMessage);
     },
@@ -802,6 +813,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
       manufacturer_invoice_date: formData.manufacturer_invoice_date,
       manufacturer_invoice_total: formData.manufacturer_invoice_total,
       manufacturer_invoice_gst_rate: formData.manufacturer_invoice_gst_rate,
+      manufacturer_invoice_is_foc: formData.manufacturer_invoice_is_foc,
       warranty_after_repair: formData.warranty_after_repair,
       hope_markup: formData.hope_markup,
       customer_paid: formData.customer_paid,
@@ -822,6 +834,10 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
           : prev.manufacturer_invoice_total,
       manufacturer_invoice_gst_rate:
         values.manufacturer_invoice_gst_rate ?? prev.manufacturer_invoice_gst_rate,
+      manufacturer_invoice_is_foc:
+        values.manufacturer_invoice_is_foc !== undefined
+          ? Boolean(values.manufacturer_invoice_is_foc)
+          : prev.manufacturer_invoice_is_foc,
       warranty_after_repair:
         values.warranty_after_repair !== undefined
           ? (values.warranty_after_repair as WarrantyAfterRepair | '')
@@ -958,7 +974,11 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
             receiving_center_id: candidateData.receiving_center_id || undefined,
           });
       if (!validation.isValid) {
-        setStageValidationErrors(validation, `Cannot move to ${newStatus}.`);
+        setStageValidationErrors(
+          validation,
+          `Cannot move to ${newStatus}.`,
+          transitionFieldValues
+        );
         return;
       }
     }
@@ -1160,7 +1180,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
         receiving_center_id: formData.receiving_center_id || undefined,
       });
       if (!stageValidation.isValid) {
-        setStageValidationErrors(stageValidation);
+        setStageValidationErrors(stageValidation, undefined, transitionFieldValues);
         throw new Error(stageValidation.message || 'Missing required stage fields');
       }
 
@@ -1324,6 +1344,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
               ? Number(formData.manufacturer_invoice_total)
               : null,
           manufacturer_invoice_gst_rate: Number(formData.manufacturer_invoice_gst_rate) || 18,
+          manufacturer_invoice_is_foc: formData.manufacturer_invoice_is_foc,
           ...(Number(formData.manufacturer_invoice_total) > 0
             ? (() => {
                 const breakdown = calculateTaxFromInclusive(
@@ -2439,12 +2460,38 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   label="Company Invoice Total"
                   name="manufacturer_invoice_total"
                   value={formData.manufacturer_invoice_total ?? ''}
-                  onChange={handleChange}
+                  onChange={(e) => {
+                    clearFieldError('manufacturer_invoice_total');
+                    clearFieldError('manufacturer_invoice_is_foc');
+                    const raw = e.target.value;
+                    const nextTotal = raw === '' ? null : Number(raw);
+                    setFormData((prev) => ({
+                      ...prev,
+                      manufacturer_invoice_total: nextTotal,
+                      manufacturer_invoice_is_foc:
+                        nextTotal === 0 ? prev.manufacturer_invoice_is_foc : false,
+                    }));
+                  }}
                   InputProps={{ inputProps: { min: 0, step: 0.01 }, startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
                   error={Boolean(fieldErrors.manufacturer_invoice_total)}
-                  helperText={fieldErrors.manufacturer_invoice_total || 'Gross amount on the manufacturer\'s invoice'}
+                  helperText={fieldErrors.manufacturer_invoice_total || 'Gross amount on the manufacturer\'s invoice (enter 0 if FOC)'}
                 />
               </Grid>
+              {isExplicitZeroInvoiceTotal(formData.manufacturer_invoice_total) && (
+                <Grid item xs={12}>
+                  <ManufacturerInvoiceFocConfirm
+                    checked={formData.manufacturer_invoice_is_foc}
+                    onChange={(checked) => {
+                      clearFieldError('manufacturer_invoice_is_foc');
+                      setFormData((prev) => ({
+                        ...prev,
+                        manufacturer_invoice_is_foc: checked,
+                      }));
+                    }}
+                    error={fieldErrors.manufacturer_invoice_is_foc}
+                  />
+                </Grid>
+              )}
               {Number(formData.manufacturer_invoice_total) > 0 && (
                 <Grid item xs={12} sm={6}>
                   <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', height: '100%' }}>
@@ -2485,9 +2532,14 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                     {formatCurrency(customerQuote)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                    {Number(formData.manufacturer_invoice_total) > 0
-                      ? `${formatCurrency(Number(formData.manufacturer_invoice_total))} (company invoice) + ${formatCurrency(Number(formData.hope_markup) || 0)} (your add)`
-                      : 'Enter company invoice and your markup above'}
+                    {formData.manufacturer_invoice_is_foc &&
+                    isExplicitZeroInvoiceTotal(formData.manufacturer_invoice_total) ? (
+                      <>FOC (Free of Cost) — no manufacturer charge + {formatCurrency(Number(formData.hope_markup) || 0)} (your add)</>
+                    ) : Number(formData.manufacturer_invoice_total) > 0 ? (
+                      `${formatCurrency(Number(formData.manufacturer_invoice_total))} (company invoice) + ${formatCurrency(Number(formData.hope_markup) || 0)} (your add)`
+                    ) : (
+                      'Enter company invoice and your markup above'
+                    )}
                   </Typography>
                   {customerQuote > 0 && (
                     <>

@@ -22,6 +22,7 @@ type StageValidationField =
 type StageValidationInput = Partial<RepairRecord> & {
   receiving_center_id?: string;
   payment_mode?: PaymentMode | null;
+  manufacturer_invoice_is_foc?: boolean;
 };
 
 type RequirementFn = (repair: StageValidationInput) => boolean;
@@ -65,8 +66,16 @@ const REQUIREMENT_CHECKS: Record<StageValidationField, RequirementFn> = {
   manufacturer_invoice_number: (repair) => !repair.manufacturer_invoice_number?.trim(),
   manufacturer_invoice_date: (repair) => !repair.manufacturer_invoice_date,
   manufacturer_invoice_total: (repair) => {
+    if (
+      repair.manufacturer_invoice_total == null ||
+      `${repair.manufacturer_invoice_total}` === ''
+    ) {
+      return true;
+    }
     const amount = Number(repair.manufacturer_invoice_total);
-    return !Number.isFinite(amount) || amount <= 0;
+    if (!Number.isFinite(amount) || amount < 0) return true;
+    if (amount === 0) return !repair.manufacturer_invoice_is_foc;
+    return false;
   },
   warranty_after_repair: (repair) => !repair.warranty_after_repair,
   pickup_center_id: (repair) =>
@@ -174,6 +183,7 @@ export interface TransitionFieldValues {
   manufacturer_invoice_date?: string | null;
   manufacturer_invoice_total?: number | null;
   manufacturer_invoice_gst_rate?: number;
+  manufacturer_invoice_is_foc?: boolean;
   warranty_after_repair?: WarrantyAfterRepair | '';
   hope_markup?: number | null;
   customer_paid?: number | null;
@@ -216,13 +226,26 @@ export function buildRepairUpdatesFromTransition(
     updates.manufacturer_invoice_total = total;
     const gstRate = Number(values.manufacturer_invoice_gst_rate) || 18;
     updates.manufacturer_invoice_gst_rate = gstRate;
-    if (total && total > 0) {
+    const isFoc = Boolean(values.manufacturer_invoice_is_foc) && total === 0;
+    updates.manufacturer_invoice_is_foc = isFoc;
+    if (total != null && total > 0) {
       const breakdown = calculateTaxFromInclusive(total, gstRate);
       updates.manufacturer_invoice_base_amount = breakdown.netValue;
       updates.manufacturer_invoice_tax_amount = breakdown.taxAmount;
       updates.manufacturer_invoice_cgst_amount = breakdown.cgstAmount;
       updates.manufacturer_invoice_sgst_amount = breakdown.sgstAmount;
+    } else if (total === 0) {
+      updates.manufacturer_invoice_base_amount = null;
+      updates.manufacturer_invoice_tax_amount = null;
+      updates.manufacturer_invoice_cgst_amount = null;
+      updates.manufacturer_invoice_sgst_amount = null;
+      if (isFoc && !values.manufacturer_invoice_number?.trim()) {
+        updates.manufacturer_invoice_number = 'FOC';
+      }
     }
+  }
+  if (values.manufacturer_invoice_is_foc !== undefined && values.manufacturer_invoice_total === undefined) {
+    updates.manufacturer_invoice_is_foc = values.manufacturer_invoice_is_foc;
   }
   if (values.warranty_after_repair !== undefined) {
     updates.warranty_after_repair = values.warranty_after_repair || null;
@@ -238,6 +261,8 @@ export function buildRepairUpdatesFromTransition(
     updates.repair_estimate_by_company = quote > 0 ? Math.round(quote * 100) / 100 : null;
     if (quote > 0) {
       updates.estimate_status = 'Pending';
+    } else if (values.manufacturer_invoice_is_foc && invoiceTotal === 0) {
+      updates.estimate_status = 'Not Required';
     }
   }
   if (values.customer_paid !== undefined) {
@@ -254,6 +279,28 @@ export function buildRepairUpdatesFromTransition(
   }
 
   return updates;
+}
+
+export function mapStageFieldErrors(
+  result: StageValidationResult,
+  values: TransitionFieldValues
+): Record<string, string> {
+  const errors = result.missingFields.reduce<Record<string, string>>((acc, field) => {
+    acc[field] = 'Required for this step';
+    return acc;
+  }, {});
+
+  if (
+    result.missingFields.includes('manufacturer_invoice_total') &&
+    values.manufacturer_invoice_total != null &&
+    Number(values.manufacturer_invoice_total) === 0
+  ) {
+    errors.manufacturer_invoice_is_foc =
+      'Please confirm this repair was FOC (Free of Cost)';
+    delete errors.manufacturer_invoice_total;
+  }
+
+  return errors;
 }
 
 export function validateTransitionFields(

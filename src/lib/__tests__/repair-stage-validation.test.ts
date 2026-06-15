@@ -51,6 +51,46 @@ describe('validateRepairForStatus', () => {
     expect(result.missingFields).toHaveLength(0);
   });
 
+  it('allows zero company invoice when FOC is confirmed', () => {
+    const result = validateRepairForStatus('Returned from Manufacturer', {
+      status: 'Returned from Manufacturer',
+      patient_name: 'John Doe',
+      phone: '9999999999',
+      model_item_name: 'Model X',
+      serial_no: 'SN-1',
+      warranty: 'Out of warranty',
+      purpose: 'Service',
+      current_center_id: 'center-1',
+      date_out_to_manufacturer: '2026-06-10T10:00:00.000Z',
+      manufacturer_invoice_number: 'FOC',
+      manufacturer_invoice_date: '2026-06-11',
+      manufacturer_invoice_total: 0,
+      manufacturer_invoice_is_foc: true,
+      warranty_after_repair: '6 months',
+    });
+
+    expect(result.isValid).toBe(true);
+  });
+
+  it('blocks zero company invoice without FOC confirmation', () => {
+    const result = validateRepairForStatus('Returned from Manufacturer', {
+      status: 'Returned from Manufacturer',
+      patient_name: 'John Doe',
+      phone: '9999999999',
+      model_item_name: 'Model X',
+      serial_no: 'SN-1',
+      warranty: 'Out of warranty',
+      purpose: 'Service',
+      current_center_id: 'center-1',
+      date_out_to_manufacturer: '2026-06-10T10:00:00.000Z',
+      manufacturer_invoice_number: 'INV-0',
+      manufacturer_invoice_date: '2026-06-11',
+      manufacturer_invoice_total: 0,
+      manufacturer_invoice_is_foc: false,
+      warranty_after_repair: '6 months',
+    });
+
+    expect(result.isValid).toBe(false);
   it('requires payment details for completed status', () => {
     const result = validateRepairForStatus('Completed', {
       status: 'Completed',

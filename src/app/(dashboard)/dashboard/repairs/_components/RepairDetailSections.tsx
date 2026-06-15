@@ -152,9 +152,13 @@ export default function RepairDetailSections({ repair, estimateStatus }: RepairD
             <DetailRow
               label="Company Invoice"
               value={
-                repair.manufacturer_invoice_total
-                  ? formatCurrency(repair.manufacturer_invoice_total)
-                  : null
+                repair.manufacturer_invoice_is_foc &&
+                (repair.manufacturer_invoice_total == null ||
+                  Number(repair.manufacturer_invoice_total) === 0)
+                  ? 'FOC (Free of Cost)'
+                  : repair.manufacturer_invoice_total != null
+                    ? formatCurrency(repair.manufacturer_invoice_total)
+                    : null
               }
             />
             <DetailRow label="Invoice No." value={repair.manufacturer_invoice_number} />

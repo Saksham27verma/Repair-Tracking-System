@@ -454,6 +454,7 @@ export interface RepairRecord {
   manufacturer_invoice_tax_amount?: number;
   manufacturer_invoice_cgst_amount?: number;
   manufacturer_invoice_sgst_amount?: number;
+  manufacturer_invoice_is_foc?: boolean;
   
   // Estimate Approval
   estimate_status?: EstimateStatus;

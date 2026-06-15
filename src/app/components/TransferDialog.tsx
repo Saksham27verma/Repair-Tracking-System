@@ -34,6 +34,7 @@ import {
   TransitionFieldValues,
   buildRepairUpdatesFromTransition,
   validateTransitionFields,
+  mapStageFieldErrors,
 } from '@/lib/repair-stage-validation';
 
 interface TransferDialogProps {
@@ -104,6 +105,7 @@ function buildInitialTransitionValues(repair?: Partial<RepairRecord>): Transitio
     manufacturer_invoice_date: repair?.manufacturer_invoice_date || null,
     manufacturer_invoice_total: repair?.manufacturer_invoice_total ?? null,
     manufacturer_invoice_gst_rate: repair?.manufacturer_invoice_gst_rate ?? 18,
+    manufacturer_invoice_is_foc: repair?.manufacturer_invoice_is_foc ?? false,
     warranty_after_repair: repair?.warranty_after_repair || '',
     hope_markup: markup,
     customer_paid: repair?.customer_paid ?? null,
@@ -207,14 +209,7 @@ export default function TransferDialog({
         });
 
         if (!validation.isValid) {
-          const nextErrors = validation.missingFields.reduce<Record<string, string>>(
-            (acc, field) => {
-              acc[field] = 'Required for this step';
-              return acc;
-            },
-            {}
-          );
-          setFieldErrors(nextErrors);
+          setFieldErrors(mapStageFieldErrors(validation, transitionPayload));
           setError(validation.message || 'Complete the required fields for this step.');
           setLoading(false);
           return;

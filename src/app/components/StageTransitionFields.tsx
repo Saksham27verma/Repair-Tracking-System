@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import {
+  Alert,
   Box,
   Divider,
   Grid,
@@ -17,6 +18,9 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import dayjs, { Dayjs } from 'dayjs';
 import { PaymentMode, RepairStatus, WarrantyAfterRepair } from '@/app/types/database';
 import CenterSelect from '@/app/components/CenterSelect';
+import ManufacturerInvoiceFocConfirm, {
+  isExplicitZeroInvoiceTotal,
+} from '@/app/components/ManufacturerInvoiceFocConfirm';
 import { calculateTaxFromInclusive, formatCurrency, GST_RATE_OPTIONS } from '@/lib/invoice-tax';
 import {
   getCustomerQuoteFromTransition,
@@ -44,11 +48,13 @@ function FinancialSummary({
   invoiceTotal,
   markup,
   customerQuoteTaxBreakdown,
+  isFoc = false,
 }: {
   customerQuote: number;
   invoiceTotal: number;
   markup: number;
   customerQuoteTaxBreakdown: ReturnType<typeof calculateTaxFromInclusive>;
+  isFoc?: boolean;
 }) {
   return (
     <Box sx={{ p: 2.5, borderRadius: 2, bgcolor: '#FFF7ED', border: '2px solid #F97316' }}>
@@ -59,9 +65,13 @@ function FinancialSummary({
         {formatCurrency(customerQuote)}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-        {invoiceTotal > 0
-          ? `${formatCurrency(invoiceTotal)} (company invoice) + ${formatCurrency(markup)} (your markup)`
-          : 'Enter company invoice and your markup above'}
+        {isFoc && invoiceTotal === 0 ? (
+          <>FOC (Free of Cost) — no manufacturer charge{markup > 0 ? ` + ${formatCurrency(markup)} markup` : ''}</>
+        ) : invoiceTotal > 0 ? (
+          `${formatCurrency(invoiceTotal)} (company invoice) + ${formatCurrency(markup)} (your markup)`
+        ) : (
+          'Enter company invoice and your markup above'
+        )}
       </Typography>
       {customerQuote > 0 && (
         <>
@@ -215,20 +225,37 @@ export default function StageTransitionFields({
                 type="number"
                 label="Company Invoice Total"
                 value={values.manufacturer_invoice_total ?? ''}
-                onChange={(e) =>
-                  setField(
-                    'manufacturer_invoice_total',
-                    e.target.value ? Number(e.target.value) : null
-                  )
-                }
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const nextTotal = raw === '' ? null : Number(raw);
+                  onChange({
+                    ...values,
+                    manufacturer_invoice_total: nextTotal,
+                    manufacturer_invoice_is_foc:
+                      nextTotal === 0 ? values.manufacturer_invoice_is_foc : false,
+                  });
+                }}
                 InputProps={{
                   startAdornment: <InputAdornment position="start">₹</InputAdornment>,
                   inputProps: { min: 0, step: 0.01 },
                 }}
                 error={Boolean(errors.manufacturer_invoice_total)}
-                helperText={errors.manufacturer_invoice_total || "Gross amount on manufacturer's invoice"}
+                helperText={
+                  errors.manufacturer_invoice_total ||
+                  "Gross amount on manufacturer's invoice (enter 0 if FOC)"
+                }
               />
             </Grid>
+
+            {isExplicitZeroInvoiceTotal(values.manufacturer_invoice_total) && (
+              <Grid item xs={12}>
+                <ManufacturerInvoiceFocConfirm
+                  checked={Boolean(values.manufacturer_invoice_is_foc)}
+                  onChange={(checked) => setField('manufacturer_invoice_is_foc', checked)}
+                  error={errors.manufacturer_invoice_is_foc}
+                />
+              </Grid>
+            )}
 
             {invoiceTotal > 0 && (
               <Grid item xs={12} sm={4}>
@@ -285,6 +312,7 @@ export default function StageTransitionFields({
                 invoiceTotal={invoiceTotal}
                 markup={markup}
                 customerQuoteTaxBreakdown={customerQuoteTaxBreakdown}
+                isFoc={Boolean(values.manufacturer_invoice_is_foc)}
               />
             </Grid>
 
@@ -341,6 +369,7 @@ export default function StageTransitionFields({
               invoiceTotal={invoiceTotal}
               markup={markup}
               customerQuoteTaxBreakdown={customerQuoteTaxBreakdown}
+              isFoc={Boolean(values.manufacturer_invoice_is_foc)}
             />
           </Grid>
         )}
@@ -358,6 +387,7 @@ export default function StageTransitionFields({
                     invoiceTotal={invoiceTotal}
                     markup={markup}
                     customerQuoteTaxBreakdown={customerQuoteTaxBreakdown}
+                    isFoc={Boolean(values.manufacturer_invoice_is_foc)}
                   />
                 </Stack>
               </Grid>

@@ -68,7 +68,7 @@ export async function POST(
     const { data: repair, error: repairError } = await supabase
       .from('repairs')
       .select(
-        'id, status, patient_name, phone, model_item_name, serial_no, warranty, purpose, current_center_id, pickup_center_id, current_location_type, date_out_to_manufacturer, date_received_from_manufacturer, date_out_to_customer, manufacturer_invoice_number, manufacturer_invoice_date, manufacturer_invoice_total, warranty_after_repair, customer_paid, payment_mode'
+        'id, status, patient_name, phone, model_item_name, serial_no, warranty, purpose, current_center_id, pickup_center_id, current_location_type, date_out_to_manufacturer, date_received_from_manufacturer, date_out_to_customer, manufacturer_invoice_number, manufacturer_invoice_date, manufacturer_invoice_total, manufacturer_invoice_is_foc, warranty_after_repair, customer_paid, payment_mode'
       )
       .eq('id', params.id)
       .single();
