@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Alert, Box, Button } from '@mui/material';
 import { supabase } from '@/lib/supabase';
+import { getCustomerVisitStats, type CustomerVisitStats } from '@/lib/customer-visits';
 import { EstimateStatus, RepairRecord } from '@/app/types/database';
 import PageShell from '@/app/components/ui/PageShell';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
@@ -41,16 +42,16 @@ async function fetchRepair(id: string): Promise<RepairWithRelations | null> {
   return { ...repair, customer_tax_invoice: invoice ?? null };
 }
 
-async function fetchCustomerVisitCount(customerId: string | null | undefined) {
-  if (!customerId) return 0;
+async function fetchCustomerVisitStats(
+  customerId: string | null | undefined
+): Promise<CustomerVisitStats | null> {
+  if (!customerId) return null;
 
-  const { count, error } = await supabase
-    .from('repairs')
-    .select('id', { count: 'exact', head: true })
-    .eq('customer_id', customerId);
-
-  if (error) return 0;
-  return count ?? 0;
+  try {
+    return await getCustomerVisitStats(supabase, customerId);
+  } catch {
+    return null;
+  }
 }
 
 interface RepairDetailPageContentProps {
@@ -63,7 +64,7 @@ export default function RepairDetailPageContent({
   autoDownloadReceipt = false,
 }: RepairDetailPageContentProps) {
   const [repair, setRepair] = useState<RepairWithRelations | null>(null);
-  const [totalVisits, setTotalVisits] = useState(0);
+  const [visitStats, setVisitStats] = useState<CustomerVisitStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -84,11 +85,11 @@ export default function RepairDetailPageContent({
         return;
       }
 
-      const visits = await fetchCustomerVisitCount(repairData.customer_id);
+      const stats = await fetchCustomerVisitStats(repairData.customer_id);
       if (cancelled) return;
 
       setRepair(repairData);
-      setTotalVisits(visits);
+      setVisitStats(stats);
       setLoading(false);
     }
 
@@ -138,7 +139,7 @@ export default function RepairDetailPageContent({
       <RepairDetailView
         repair={repair}
         estimateStatus={estimateStatus}
-        totalVisits={totalVisits}
+        visitStats={visitStats}
       />
     </PageShell>
   );

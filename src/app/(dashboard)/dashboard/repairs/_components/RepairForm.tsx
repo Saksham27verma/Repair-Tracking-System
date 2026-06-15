@@ -71,7 +71,7 @@ import {
 } from '@/app/types/database';
 import { inferDeviceFormat } from '@/lib/device-format';
 import { calculateTaxFromInclusive, formatCurrency, GST_RATE_OPTIONS } from '@/lib/invoice-tax';
-import { getCustomerVisitStatsByPhone, type CustomerVisitStats } from '@/lib/customer-visits';
+import { getCustomerVisitStats, getCustomerVisitStatsByPhone, type CustomerVisitStats } from '@/lib/customer-visits';
 import {
   getTransitionFieldsForStatus,
   validateRepairForStatus,
@@ -82,7 +82,7 @@ import {
 import ManufacturerInvoiceFocConfirm, {
   isExplicitZeroInvoiceTotal,
 } from '@/app/components/ManufacturerInvoiceFocConfirm';
-import Link from 'next/link';
+import PatientVisitHistory from '@/app/components/PatientVisitHistory';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -603,6 +603,24 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
   }, [prefillCustomer, mode, syncCustomerToAllTabs]);
 
   useEffect(() => {
+    if (mode === 'edit' && repair?.customer_id) {
+      let cancelled = false;
+      setVisitStatsLoading(true);
+      getCustomerVisitStats(supabase, repair.customer_id)
+        .then((stats) => {
+          if (!cancelled) setVisitStats(stats);
+        })
+        .catch(() => {
+          if (!cancelled) setVisitStats(null);
+        })
+        .finally(() => {
+          if (!cancelled) setVisitStatsLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     if (mode !== 'create') return;
 
     const phone = formData.phone?.trim();
@@ -624,7 +642,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [formData.phone, mode]);
+  }, [formData.phone, mode, repair?.customer_id]);
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1893,22 +1911,31 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   <>
                     Returning customer — this will be Visit {visitStats.nextVisitNumber} (
                     {visitStats.totalVisits} previous visit{visitStats.totalVisits !== 1 ? 's' : ''}).
-                    {visitStats.customerId && (
-                      <>
-                        {' '}
-                        <Link
-                          href={`/dashboard/customers/${visitStats.customerId}`}
-                          style={{ fontWeight: 600 }}
-                        >
-                          View visit history
-                        </Link>
-                      </>
-                    )}
                   </>
                 ) : (
                   'New customer — this will be Visit 1.'
                 )}
               </Alert>
+            )}
+            {visitStats?.repairs && visitStats.repairs.length > 0 && (
+              <Box
+                sx={{
+                  mb: 2,
+                  p: 2,
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: '#FAFBFC',
+                }}
+              >
+                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.5 }}>
+                  {mode === 'create' ? 'Previous Visit History' : 'Visit History'}
+                </Typography>
+                <PatientVisitHistory
+                  repairs={visitStats.repairs}
+                  currentRepairId={mode === 'edit' ? repair?.id : undefined}
+                />
+              </Box>
             )}
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>

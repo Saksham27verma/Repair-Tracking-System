@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { Box, Grid, Paper, Typography, Chip, Stack } from '@mui/material';
 import {
   Devices as DeviceIcon,
@@ -14,6 +13,8 @@ import CurrentLocationBadge from '@/app/components/CurrentLocationBadge';
 import { CurrentLocationType } from '@/app/types/database';
 import { formatCurrency } from '@/lib/invoice-tax';
 import { getDeviceFormatLabel, inferDeviceFormat } from '@/lib/device-format';
+import VisitSelector from '@/app/components/VisitSelector';
+import type { CustomerVisitStats } from '@/lib/customer-visits';
 
 interface RepairDetailSummaryProps {
   repair: RepairRecord & {
@@ -24,6 +25,7 @@ interface RepairDetailSummaryProps {
   centerName?: string;
   pickupCenterName?: string;
   totalVisits: number;
+  visitRepairs?: CustomerVisitStats['repairs'];
   estimateStatus?: EstimateStatus;
 }
 
@@ -104,6 +106,7 @@ export default function RepairDetailSummary({
   centerName,
   pickupCenterName,
   totalVisits,
+  visitRepairs,
   estimateStatus,
 }: RepairDetailSummaryProps) {
   const customerPays = repair.repair_estimate_by_company;
@@ -169,21 +172,6 @@ export default function RepairDetailSummary({
               </>
             )}
           </Stack>
-          {repair.customer_id && totalVisits > 0 && (
-            <Link
-              href={`/dashboard/customers/${repair.customer_id}`}
-              style={{
-                color: '#EE6417',
-                fontWeight: 600,
-                fontSize: '0.8125rem',
-                textDecoration: 'none',
-                marginTop: 4,
-                display: 'inline-block',
-              }}
-            >
-              View all {totalVisits} customer visit{totalVisits !== 1 ? 's' : ''} →
-            </Link>
-          )}
         </Box>
         <CurrentLocationBadge locationType={locationType} centerName={centerName} />
       </Stack>
@@ -233,6 +221,10 @@ export default function RepairDetailSummary({
           />
         </Grid>
       </Grid>
+
+      {visitRepairs && visitRepairs.length > 1 && (
+        <VisitSelector repairs={visitRepairs} currentRepairId={repair.id} />
+      )}
     </Paper>
   );
 }

@@ -16,6 +16,7 @@ import RepairDetailTracking from './RepairDetailTracking';
 import RepairDetailSummary from './RepairDetailSummary';
 import RepairDetailSections from './RepairDetailSections';
 import { RepairUpdatePayload } from '@/lib/tracking';
+import type { CustomerVisitStats } from '@/lib/customer-visits';
 
 interface RepairDetailViewProps {
   repair: RepairRecord & {
@@ -23,13 +24,13 @@ interface RepairDetailViewProps {
     pickup_center?: { id: string; name: string };
   };
   estimateStatus?: EstimateStatus;
-  totalVisits: number;
+  visitStats: CustomerVisitStats | null;
 }
 
 export default function RepairDetailView({
   repair,
   estimateStatus,
-  totalVisits,
+  visitStats,
 }: RepairDetailViewProps) {
   const router = useRouter();
   const [status, setStatus] = useState<RepairStatus>(repair.status);
@@ -66,7 +67,8 @@ export default function RepairDetailView({
         locationType={locationType}
         centerName={centerName}
         pickupCenterName={pickupCenterName}
-        totalVisits={totalVisits}
+        totalVisits={visitStats?.totalVisits ?? 0}
+        visitRepairs={visitStats?.repairs}
         estimateStatus={estimateStatus}
       />
 

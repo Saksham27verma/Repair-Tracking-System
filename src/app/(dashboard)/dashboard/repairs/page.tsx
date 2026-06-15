@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Box,
   Button,
@@ -55,28 +55,45 @@ import {
   repairMatchesSearch,
   sanitizeRepairSearchQuery,
 } from '@/lib/repair-search';
+import { groupRepairsByPatient, type RepairRow } from '@/lib/patient-repair-groups';
 
 const columns: GridColDef[] = [
+  { field: 'patient_name', headerName: 'Patient Name', width: 200 },
   {
-    field: 'repair_id',
-    headerName: 'Repair ID',
+    field: 'phone',
+    headerName: 'Phone',
     width: 150,
     renderCell: (params) => (
-      <Link href={`/dashboard/repairs/${params.row.id}`} style={{ color: '#EE6417' }}>
+      <Link
+        href={`tel:${params.value}`}
+        style={{
+          color: 'inherit',
+          textDecoration: 'none',
+          display: 'flex',
+          alignItems: 'center',
+        }}
+      >
         {params.value}
+        <PhoneIcon
+          fontSize="small"
+          sx={{
+            ml: 0.5,
+            color: 'primary.main',
+            display: { xs: 'inline-flex', md: 'none' },
+          }}
+        />
       </Link>
     ),
   },
   {
-    field: 'visit_number',
-    headerName: 'Visit',
-    width: 90,
+    field: 'total_visits',
+    headerName: 'Visits',
+    width: 110,
     renderCell: (params) => {
-      const visit = params.row?.visit_number;
-      if (visit == null) return '-';
+      const total = params.row?.total_visits ?? 1;
       return (
         <Chip
-          label={`Visit ${visit}`}
+          label={total === 1 ? '1 visit' : `${total} visits`}
           size="small"
           variant="outlined"
           sx={{
@@ -91,30 +108,16 @@ const columns: GridColDef[] = [
       );
     },
   },
-  { field: 'patient_name', headerName: 'Patient Name', width: 200 },
-  { 
-    field: 'phone', 
-    headerName: 'Phone', 
+  {
+    field: 'repair_id',
+    headerName: 'Latest Repair',
     width: 150,
     renderCell: (params) => (
-      <Link 
-        href={`tel:${params.value}`} 
-        style={{ 
-          color: 'inherit', 
-          textDecoration: 'none',
-          display: 'flex',
-          alignItems: 'center'
-        }}
+      <Link
+        href={`/dashboard/repairs/${params.row.latest_repair_id}`}
+        style={{ color: '#EE6417' }}
       >
         {params.value}
-        <PhoneIcon 
-          fontSize="small" 
-          sx={{ 
-            ml: 0.5, 
-            color: 'primary.main',
-            display: { xs: 'inline-flex', md: 'none' }
-          }} 
-        />
       </Link>
     ),
   },
@@ -206,6 +209,7 @@ const columns: GridColDef[] = [
 ];
 
 function RepairsContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const statusParam = searchParams.get('status');
   const dateParam = searchParams.get('date');
@@ -213,7 +217,7 @@ function RepairsContent() {
   const endDateParam = searchParams.get('endDate');
   const centerParam = searchParams.get('center');
   
-  const [repairs, setRepairs] = useState<any[]>([]);
+  const [repairs, setRepairs] = useState<RepairRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -415,6 +419,8 @@ function RepairsContent() {
     }
   };
 
+  const patientRows = useMemo(() => groupRepairsByPatient(repairs), [repairs]);
+
   const activeFilterCount = [
     statusFilter !== 'all',
     !!dateFilter || (!!startDateFilter && !!endDateFilter),
@@ -603,7 +609,7 @@ function RepairsContent() {
             height: '100%' 
           }}>
             <DataGrid
-              rows={repairs}
+              rows={patientRows}
               columns={columns}
               loading={loading}
               slots={{
@@ -619,11 +625,16 @@ function RepairsContent() {
               }}
               pageSizeOptions={[10, 25, 50, 100]}
               disableRowSelectionOnClick
-              getRowId={(row) => row.id}
+              onRowClick={(params) => {
+                router.push(`/dashboard/repairs/${params.row.latest_repair_id}`);
+              }}
               sx={{
                 // Styles for the DataGrid
                 width: '100%',
                 height: '100%',
+                '& .MuiDataGrid-row': {
+                  cursor: 'pointer',
+                },
                 '& .MuiDataGrid-cell': {
                   overflow: 'visible',
                   whiteSpace: 'normal',
