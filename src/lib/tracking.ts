@@ -457,4 +457,126 @@ export function getMovementForStatusChange(
   }
 }
 
+export function getCenterNameFromMovements(
+  centerId: string | null | undefined,
+  movements: RepairMovement[],
+  fallback?: string
+): string | undefined {
+  if (!centerId) return fallback;
+
+  const sorted = [...movements].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  for (const movement of sorted) {
+    if (movement.to_center_id === centerId && movement.to_center?.name) {
+      return movement.to_center.name;
+    }
+    if (movement.from_center_id === centerId && movement.from_center?.name) {
+      return movement.from_center.name;
+    }
+  }
+
+  return fallback;
+}
+
+export interface EffectiveTrackingState {
+  status: RepairStatus;
+  locationType: CurrentLocationType;
+  centerId: string | null;
+  centerName?: string;
+  pickupCenterName?: string;
+  displayMovements: RepairMovement[];
+  hasRecordedMovements: boolean;
+  isOutOfSync: boolean;
+  syncMessage?: string;
+  recordedStatus?: RepairStatus;
+}
+
+/** Journey log is the source of truth for status and location on the detail page */
+export function getEffectiveTrackingState(
+  repair: Partial<RepairRecord> & {
+    current_center?: { id: string; name: string };
+    pickup_center?: { id: string; name: string };
+  },
+  recordedMovements: RepairMovement[]
+): EffectiveTrackingState {
+  const hasRecordedMovements = recordedMovements.length > 0;
+  const displayMovements = hasRecordedMovements
+    ? recordedMovements
+    : buildLegacyMovements(repair);
+
+  const derived = deriveRepairStateFromMovements(displayMovements);
+  const repairStatus = (repair.status as RepairStatus) || 'Received';
+
+  const centerName =
+    derived.current_location_type === 'at_center'
+      ? getCenterNameFromMovements(
+          derived.current_center_id,
+          displayMovements,
+          repair.current_center?.name
+        )
+      : undefined;
+
+  const pickupCenterName =
+    repair.pickup_center?.name ||
+    getCenterNameFromMovements(derived.pickup_center_id, displayMovements);
+
+  const isOutOfSync =
+    hasRecordedMovements &&
+    (repairStatus !== derived.status ||
+      Boolean(
+        repair.current_location_type &&
+          repair.current_location_type !== derived.current_location_type
+      ));
+
+  const syncMessage = isOutOfSync
+    ? `This repair is marked "${repairStatus}" in the system, but the logged journey shows "${derived.status}". Use Log Movement below to record the next step — status and location update together.`
+    : undefined;
+
+  return {
+    status: hasRecordedMovements ? derived.status : repairStatus,
+    locationType: hasRecordedMovements
+      ? derived.current_location_type
+      : repair.current_location_type || derived.current_location_type,
+    centerId: hasRecordedMovements
+      ? derived.current_center_id
+      : repair.current_center_id ?? derived.current_center_id,
+    centerName,
+    pickupCenterName,
+    displayMovements,
+    hasRecordedMovements,
+    isOutOfSync,
+    syncMessage,
+    recordedStatus: isOutOfSync ? repairStatus : undefined,
+  };
+}
+
+export function getLocationForStatus(
+  status: RepairStatus,
+  repair: {
+    current_center_id?: string | null;
+    pickup_center_id?: string | null;
+  }
+): Pick<RepairRecord, 'current_location_type' | 'current_center_id'> {
+  switch (status) {
+    case 'Sent to Company for Repair':
+      return { current_location_type: 'at_manufacturer', current_center_id: null };
+    case 'Returned from Manufacturer':
+    case 'Ready for Pickup':
+      return {
+        current_location_type: 'at_center',
+        current_center_id: repair.pickup_center_id || repair.current_center_id || null,
+      };
+    case 'Completed':
+      return { current_location_type: 'with_customer', current_center_id: null };
+    case 'Received':
+    default:
+      return {
+        current_location_type: 'at_center',
+        current_center_id: repair.current_center_id || null,
+      };
+  }
+}
+
 export { MOVEMENT_TYPE_LABELS };

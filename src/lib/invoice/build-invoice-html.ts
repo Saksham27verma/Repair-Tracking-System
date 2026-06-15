@@ -1,4 +1,4 @@
-import { formatCurrency } from '@/lib/invoice-tax';
+import { formatInvoiceCurrency, isZeroInvoiceAmount } from '@/lib/invoice-tax';
 import type { CustomerTaxInvoice, RepairRecord, Center } from '@/app/types/database';
 import { COMPANY_CONFIG } from '@/lib/receipt/receipt-template.config';
 import { getReceiptLogoDataUri } from '@/lib/receipt/logo';
@@ -41,6 +41,11 @@ function replaceAll(template: string, replacements: Record<string, string>): str
   );
 }
 
+function formatInvoiceAmount(amount: number | null | undefined): string {
+  if (isZeroInvoiceAmount(amount)) return 'Nil';
+  return formatInvoiceCurrency(amount);
+}
+
 function buildLineItems(
   repair: BuildInvoiceHtmlInput['repair'],
   invoice: CustomerTaxInvoice
@@ -50,22 +55,32 @@ function buildLineItems(
     <tr>
       <td>1</td>
       <td>
-        <div style="font-weight: 700;">${escapeHtml(description)}</div>
+        <div class="item-desc">${escapeHtml(description)}</div>
       </td>
       <td>${escapeHtml(invoice.hsn_sac)}</td>
       <td>1</td>
-      <td>${escapeHtml(formatCurrency(invoice.net_amount))}</td>
-      <td style="font-weight: 700;">${escapeHtml(formatCurrency(invoice.gross_amount))}</td>
+      <td class="amount">${escapeHtml(formatInvoiceAmount(invoice.net_amount))}</td>
+      <td class="amount" style="font-weight: 700;">${escapeHtml(formatInvoiceAmount(invoice.gross_amount))}</td>
     </tr>
   `;
 }
 
 function buildPaymentSection(invoice: CustomerTaxInvoice): string {
-  if (!invoice.payment_mode) return '';
+  if (!invoice.payment_mode || isZeroInvoiceAmount(invoice.gross_amount)) return '';
   return `
     <div class="payment-box">
-      <strong>Payment Received:</strong> ${escapeHtml(formatCurrency(invoice.gross_amount))}
+      <strong>Payment Received:</strong> ${escapeHtml(formatInvoiceCurrency(invoice.gross_amount))}
       via ${escapeHtml(invoice.payment_mode)}
+    </div>
+  `;
+}
+
+function buildFocSection(grossAmount: number): string {
+  if (!isZeroInvoiceAmount(grossAmount)) return '';
+  return `
+    <div class="foc-note">
+      <strong>No charge to customer.</strong> This invoice is issued at zero value (warranty / FOC repair).
+      GST is not applicable on a nil-value supply.
     </div>
   `;
 }
@@ -105,14 +120,15 @@ export async function buildTaxInvoiceHtml(input: BuildInvoiceHtmlInput): Promise
     BUYER_NAME: escapeHtml(repair.patient_name),
     BUYER_CONTACT: buyerContact,
     RECEIVING_CENTER: escapeHtml(centerName),
+    FOC_SECTION: buildFocSection(invoice.gross_amount),
     LINE_ITEMS: buildLineItems(repair, invoice),
     CGST_RATE: escapeHtml(cgstRate),
     SGST_RATE: escapeHtml(sgstRate),
-    NET_AMOUNT: escapeHtml(formatCurrency(invoice.net_amount)),
-    CGST_AMOUNT: escapeHtml(formatCurrency(invoice.cgst_amount)),
-    SGST_AMOUNT: escapeHtml(formatCurrency(invoice.sgst_amount)),
-    TAX_AMOUNT: escapeHtml(formatCurrency(invoice.tax_amount)),
-    GROSS_AMOUNT: escapeHtml(formatCurrency(invoice.gross_amount)),
+    NET_AMOUNT: escapeHtml(formatInvoiceAmount(invoice.net_amount)),
+    CGST_AMOUNT: escapeHtml(formatInvoiceAmount(invoice.cgst_amount)),
+    SGST_AMOUNT: escapeHtml(formatInvoiceAmount(invoice.sgst_amount)),
+    TAX_AMOUNT: escapeHtml(formatInvoiceAmount(invoice.tax_amount)),
+    GROSS_AMOUNT: escapeHtml(formatInvoiceAmount(invoice.gross_amount)),
     AMOUNT_IN_WORDS: escapeHtml(amountInWords(invoice.gross_amount)),
     PAYMENT_SECTION: buildPaymentSection(invoice),
     FOOTER_DISCLAIMER: escapeHtml(INVOICE_DEFAULTS.footerDisclaimer),

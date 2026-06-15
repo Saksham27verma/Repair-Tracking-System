@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   Alert,
   Box,
@@ -27,6 +27,7 @@ import {
 } from '@/lib/invoice/invoice-utils';
 import { buildLineItemDescription } from '@/lib/invoice/invoice-description';
 import { formatEarLabel, formatSerialNumbers, inferDeviceFormat } from '@/lib/device-format';
+import ZeroInvoiceConfirm from '@/app/components/ZeroInvoiceConfirm';
 
 interface CreateInvoiceDialogProps {
   open: boolean;
@@ -66,8 +67,18 @@ export default function CreateInvoiceDialog({
 }: CreateInvoiceDialogProps) {
   const [invoiceDate, setInvoiceDate] = useState<Dayjs | null>(dayjs());
   const [submitting, setSubmitting] = useState(false);
+  const [confirmZeroAmount, setConfirmZeroAmount] = useState(false);
 
-  const validation = useMemo(() => validateRepairForInvoice(repair), [repair]);
+  useEffect(() => {
+    if (open) {
+      setConfirmZeroAmount(false);
+    }
+  }, [open, repair.id]);
+
+  const validation = useMemo(
+    () => validateRepairForInvoice(repair, { confirmZeroAmount }),
+    [repair, confirmZeroAmount]
+  );
   const grossAmount = resolveInvoiceGrossAmount(repair);
   const gstRate = resolveInvoiceGstRate(repair);
   const taxBreakdown = useMemo(
@@ -86,7 +97,11 @@ export default function CreateInvoiceDialog({
       ? 'Amount customer paid'
       : validation.amountSource === 'repair_estimate_by_company'
         ? 'Customer quote (company invoice + markup)'
-        : '—';
+        : validation.amountSource === 'zero_warranty'
+          ? 'Warranty repair (no charge to customer)'
+          : validation.amountSource === 'zero_foc'
+            ? 'Free of Cost (FOC) — no charge to customer'
+            : '—';
 
   const handleCreate = async () => {
     if (!validation.valid) return;
@@ -98,6 +113,7 @@ export default function CreateInvoiceDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           invoice_date: invoiceDate?.isValid() ? invoiceDate.format('YYYY-MM-DD') : undefined,
+          confirm_zero_amount: confirmZeroAmount || undefined,
         }),
       });
 
@@ -122,9 +138,32 @@ export default function CreateInvoiceDialog({
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Create Tax Invoice</DialogTitle>
       <DialogContent>
-        {!validation.valid && (
+        {!validation.valid && validation.errors.length > 0 && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {validation.errors.join(' ')}
+          </Alert>
+        )}
+
+        {validation.requiresZeroAmountConfirmation && (
+          <Box sx={{ mb: 2 }}>
+            <ZeroInvoiceConfirm
+              checked={confirmZeroAmount}
+              onChange={setConfirmZeroAmount}
+              warranty={repair.warranty || 'Out of warranty'}
+            />
+          </Box>
+        )}
+
+        {validation.amountSource === 'zero_warranty' && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            This device is under warranty ({repair.warranty}). A ₹0 customer invoice is allowed with
+            no additional confirmation.
+          </Alert>
+        )}
+
+        {validation.amountSource === 'zero_foc' && !validation.isInWarranty && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Creating a Free of Cost (FOC) invoice with no charge to the customer.
           </Alert>
         )}
 

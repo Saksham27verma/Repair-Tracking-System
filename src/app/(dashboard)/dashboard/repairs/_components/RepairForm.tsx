@@ -77,6 +77,7 @@ import {
   validateRepairForStatus,
   validateTransitionFields,
   mapStageFieldErrors,
+  buildRepairUpdatesFromTransition,
   type TransitionFieldValues,
 } from '@/lib/repair-stage-validation';
 import ManufacturerInvoiceFocConfirm, {
@@ -1493,15 +1494,64 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
             throw new Error(insertError instanceof Error ? insertError.message : 'Failed to create repair');
           }
         } else {
-          // Add fields specific to updates
           const updateData = {
             ...dbData,
-            status: formData.status,
             date_out_to_manufacturer: formData.date_out_to_manufacturer,
             date_received_from_manufacturer: formData.date_received_from_manufacturer,
-            date_out_to_customer: formData.date_out_to_customer
+            date_out_to_customer: formData.date_out_to_customer,
           };
-          
+
+          if (statusChanged && repair?.id) {
+            const movement = getMovementForStatusChange(statusChanged.newStatus, {
+              current_center_id: formData.receiving_center_id || repair.current_center_id,
+              pickup_center_id: formData.pickup_center_id || repair.pickup_center_id,
+              receiving_center_id: formData.receiving_center_id,
+            });
+
+            if (movement) {
+              const now = new Date().toISOString();
+              const transitionPayload: TransitionFieldValues = {
+                manufacturer_invoice_number: formData.manufacturer_invoice_number,
+                manufacturer_invoice_date: formData.manufacturer_invoice_date,
+                manufacturer_invoice_total: formData.manufacturer_invoice_total,
+                manufacturer_invoice_gst_rate: formData.manufacturer_invoice_gst_rate,
+                manufacturer_invoice_is_foc: formData.manufacturer_invoice_is_foc,
+                warranty_after_repair: formData.warranty_after_repair,
+                hope_markup: formData.hope_markup,
+                customer_paid: formData.customer_paid,
+                payment_mode: formData.payment_mode,
+                pickup_center_id: formData.pickup_center_id,
+              };
+              const movementRes = await fetch(`/api/repairs/${repair.id}/movements`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  ...movement,
+                  shipped_at:
+                    movement.movement_type === 'sent_to_manufacturer'
+                      ? formData.date_out_to_manufacturer || now
+                      : undefined,
+                  received_at:
+                    movement.received_at ||
+                    (movement.movement_type !== 'sent_to_manufacturer' ? now : undefined),
+                  repair_updates: buildRepairUpdatesFromTransition(transitionPayload),
+                }),
+              });
+
+              const movementData = await movementRes.json();
+              if (!movementRes.ok) {
+                throw new Error(
+                  movementData.error ||
+                    'Could not log the device movement for this status change. Status and location stay in sync through movements.'
+                );
+              }
+            } else {
+              updateData.status = formData.status;
+            }
+          } else {
+            updateData.status = formData.status;
+          }
+
           console.log('Updating repair with data:', updateData);
 
           const { error: repairError } = await supabase
@@ -1514,25 +1564,6 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
             throw new Error(`Failed to update repair: ${repairError.message}`);
           }
 
-          if (statusChanged && repair?.id) {
-            const movement = getMovementForStatusChange(statusChanged.newStatus, {
-              current_center_id: formData.receiving_center_id || repair.current_center_id,
-              pickup_center_id: formData.pickup_center_id || repair.pickup_center_id,
-              receiving_center_id: formData.receiving_center_id,
-            });
-            if (movement) {
-              try {
-                await fetch(`/api/repairs/${repair.id}/movements`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(movement),
-                });
-              } catch (movementErr) {
-                console.warn('Failed to auto-log movement for status change:', movementErr);
-              }
-            }
-          }
-          
           if (repair?.repair_id) {
             try {
               // More aggressive cache invalidation approach

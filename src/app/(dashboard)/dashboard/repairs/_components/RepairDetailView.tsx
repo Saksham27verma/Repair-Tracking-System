@@ -1,13 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Box } from '@mui/material';
+import { Alert, Box } from '@mui/material';
 import {
-  CurrentLocationType,
   EstimateStatus,
+  RepairMovement,
   RepairRecord,
-  RepairStatus,
 } from '@/app/types/database';
 import ContentCard from '@/app/components/ui/ContentCard';
 import StatusBadge from '@/app/components/ui/StatusBadge';
@@ -15,7 +14,11 @@ import RepairStatusStepper from '@/app/components/RepairStatusStepper';
 import RepairDetailTracking from './RepairDetailTracking';
 import RepairDetailSummary from './RepairDetailSummary';
 import RepairDetailSections from './RepairDetailSections';
-import { RepairUpdatePayload } from '@/lib/tracking';
+import {
+  RepairUpdatePayload,
+  getEffectiveTrackingState,
+  type EffectiveTrackingState,
+} from '@/lib/tracking';
 import type { CustomerVisitStats } from '@/lib/customer-visits';
 
 interface RepairDetailViewProps {
@@ -33,31 +36,73 @@ export default function RepairDetailView({
   visitStats,
 }: RepairDetailViewProps) {
   const router = useRouter();
-  const [status, setStatus] = useState<RepairStatus>(repair.status);
-  const [locationType, setLocationType] = useState<CurrentLocationType | undefined>(
-    repair.current_location_type
+  const [movements, setMovements] = useState<RepairMovement[]>([]);
+  const [movementsLoading, setMovementsLoading] = useState(true);
+  const [trackingState, setTrackingState] = useState<EffectiveTrackingState>(() =>
+    getEffectiveTrackingState(repair, [])
   );
-  const [centerId, setCenterId] = useState(repair.current_center_id);
-  const [centerName, setCenterName] = useState(repair.current_center?.name);
-  const [pickupCenterName, setPickupCenterName] = useState(repair.pickup_center?.name);
 
-  const handleRepairUpdated = (updated: RepairUpdatePayload) => {
-    if (updated.status) setStatus(updated.status);
-    if (updated.current_location_type) setLocationType(updated.current_location_type);
-    if (updated.current_center_id !== undefined) {
-      setCenterId(updated.current_center_id ?? undefined);
+  const fetchMovements = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/repairs/${repair.id}/movements`);
+      if (res.ok) {
+        const data = await res.json();
+        setMovements(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch movements:', err);
+    } finally {
+      setMovementsLoading(false);
     }
-    if (updated.current_center !== undefined) {
-      setCenterName(updated.current_center?.name);
-      if (updated.current_center?.id) {
-        setCenterId(updated.current_center.id);
+  }, [repair.id]);
+
+  useEffect(() => {
+    fetchMovements();
+  }, [fetchMovements]);
+
+  useEffect(() => {
+    setTrackingState(getEffectiveTrackingState(repair, movements));
+  }, [repair, movements]);
+
+  useEffect(() => {
+    if (!movementsLoading && movements.length > 0) {
+      const state = getEffectiveTrackingState(repair, movements);
+      if (state.isOutOfSync) {
+        fetch(`/api/repairs/${repair.id}/sync-tracking`, { method: 'POST' })
+          .then((res) => (res.ok ? router.refresh() : null))
+          .catch(() => undefined);
       }
     }
-    if (updated.pickup_center !== undefined) {
-      setPickupCenterName(updated.pickup_center?.name);
-    }
+  }, [movementsLoading, movements, repair, router]);
+
+  const handleRepairUpdated = (updated: RepairUpdatePayload) => {
+    fetchMovements();
     router.refresh();
+    if (updated) {
+      setTrackingState(
+        getEffectiveTrackingState(
+          {
+            ...repair,
+            status: updated.status ?? repair.status,
+            current_location_type:
+              updated.current_location_type ?? repair.current_location_type,
+            current_center_id:
+              updated.current_center_id !== undefined
+                ? updated.current_center_id ?? undefined
+                : repair.current_center_id,
+            current_center: updated.current_center ?? repair.current_center,
+            pickup_center: updated.pickup_center ?? repair.pickup_center,
+          },
+          movements
+        )
+      );
+    }
   };
+
+  const status = trackingState.status;
+  const locationType = trackingState.locationType;
+  const centerName = trackingState.centerName;
+  const pickupCenterName = trackingState.pickupCenterName;
 
   return (
     <Box>
@@ -71,6 +116,12 @@ export default function RepairDetailView({
         visitRepairs={visitStats?.repairs}
         estimateStatus={estimateStatus}
       />
+
+      {trackingState.isOutOfSync && trackingState.syncMessage && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          {trackingState.syncMessage}
+        </Alert>
+      )}
 
       <ContentCard title="Repair Progress" sx={{ mb: 3 }}>
         <Box sx={{ mb: 2.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -90,12 +141,10 @@ export default function RepairDetailView({
       <RepairDetailTracking
         repairId={repair.id}
         repair={repair}
-        currentCenterId={centerId}
-        currentLocationType={locationType}
-        currentCenterName={centerName}
-        pickupCenterName={pickupCenterName}
-        receivingCenter={repair.receiving_center}
+        trackingState={trackingState}
+        movementsLoading={movementsLoading}
         onRepairUpdated={handleRepairUpdated}
+        onMovementsRefresh={fetchMovements}
       />
 
       <Box sx={{ mt: 1 }}>

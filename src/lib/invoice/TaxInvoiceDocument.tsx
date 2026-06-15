@@ -1,6 +1,6 @@
 import React from 'react';
 import { Document, Page, Text, View, Image, StyleSheet } from '@react-pdf/renderer';
-import { formatCurrency } from '@/lib/invoice-tax';
+import { formatInvoiceCurrency, isZeroInvoiceAmount } from '@/lib/invoice-tax';
 import { buildLineItemDescription } from './invoice-description';
 import type { CustomerTaxInvoice, RepairRecord, Center } from '@/app/types/database';
 import { COMPANY_CONFIG } from '@/lib/receipt/receipt-template.config';
@@ -18,39 +18,130 @@ export interface TaxInvoiceDocumentProps {
 
 const RED = COMPANY_CONFIG.brandRed;
 
+function formatInvoiceAmount(amount: number | null | undefined): string {
+  if (isZeroInvoiceAmount(amount)) return 'Nil';
+  return formatInvoiceCurrency(amount);
+}
+
 const styles = StyleSheet.create({
-  page: { padding: 28, fontSize: 10, color: '#1A202C', fontFamily: 'Helvetica', lineHeight: 1.4 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
+  page: { padding: 32, fontSize: 10, color: '#1A202C', fontFamily: 'Helvetica', lineHeight: 1.45 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
   headerLeft: { width: '62%' },
   headerRight: { width: '35%', alignItems: 'flex-end' },
   logo: { width: 100, marginBottom: 6 },
-  companyName: { fontSize: 16, fontFamily: 'Helvetica-Bold', color: RED, textTransform: 'uppercase', marginBottom: 4 },
-  textLight: { fontSize: 9, color: '#4A5568' },
-  textMuted: { fontSize: 8, color: '#718096', textTransform: 'uppercase', letterSpacing: 1 },
-  docType: {
-    fontSize: 8, fontFamily: 'Helvetica-Bold', color: RED, textTransform: 'uppercase', letterSpacing: 1.5,
-    borderWidth: 1, borderColor: RED, paddingVertical: 3, paddingHorizontal: 8, marginBottom: 6,
+  companyName: {
+    fontSize: 16,
+    fontFamily: 'Helvetica-Bold',
+    color: RED,
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
-  partyRow: { flexDirection: 'row', marginBottom: 14, gap: 8 },
-  partyBox: { flex: 1, borderWidth: 1, borderColor: '#EDF2F7', padding: 10 },
-  partyTitle: { fontSize: 8, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', color: '#A0AEC0', marginBottom: 6 },
-  tableHeader: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#1A202C', paddingVertical: 6, paddingHorizontal: 6, marginBottom: 2 },
-  tableHeaderCell: { fontSize: 7, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', color: '#4A5568' },
-  tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#EDF2F7', paddingVertical: 8, paddingHorizontal: 6 },
+  textLight: { fontSize: 9, color: '#4A5568' },
+  textMuted: { fontSize: 8, color: '#718096', textTransform: 'uppercase', letterSpacing: 0.8 },
+  docType: {
+    fontSize: 8,
+    fontFamily: 'Helvetica-Bold',
+    color: RED,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+    borderWidth: 1,
+    borderColor: RED,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    marginBottom: 8,
+    borderRadius: 3,
+  },
+  partyRow: { flexDirection: 'row', marginBottom: 16, gap: 8 },
+  partyBox: { flex: 1, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FAFBFC', padding: 12 },
+  partyTitle: {
+    fontSize: 8,
+    fontFamily: 'Helvetica-Bold',
+    textTransform: 'uppercase',
+    color: '#A0AEC0',
+    marginBottom: 6,
+    letterSpacing: 0.6,
+  },
+  focNote: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#F6E05E',
+    borderRadius: 4,
+    padding: 10,
+    marginBottom: 14,
+    fontSize: 9,
+    color: '#744210',
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    borderBottomWidth: 2,
+    borderBottomColor: '#1A202C',
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+    marginBottom: 2,
+  },
+  tableHeaderCell: {
+    fontSize: 7,
+    fontFamily: 'Helvetica-Bold',
+    textTransform: 'uppercase',
+    color: '#4A5568',
+    letterSpacing: 0.4,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDF2F7',
+    paddingVertical: 9,
+    paddingHorizontal: 6,
+  },
   colNum: { width: '5%' },
   colDesc: { width: '40%' },
   colHsn: { width: '10%' },
   colQty: { width: '8%' },
-  colTaxable: { width: '17%' },
-  colTotal: { width: '20%' },
-  taxTable: { borderWidth: 1, borderColor: '#EDF2F7', marginBottom: 12 },
-  taxHeader: { flexDirection: 'row', backgroundColor: '#F9FAFB', borderBottomWidth: 1, borderBottomColor: '#EDF2F7' },
+  colTaxable: { width: '17%', textAlign: 'right' },
+  colTotal: { width: '20%', textAlign: 'right' },
+  taxTable: { borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14, borderRadius: 4 },
+  taxHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#F7FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
   taxRow: { flexDirection: 'row', backgroundColor: '#FFF5F5' },
-  taxCell: { flex: 1, padding: 8, fontSize: 9, borderRightWidth: 1, borderRightColor: '#EDF2F7' },
-  taxCellLast: { flex: 1, padding: 8, fontSize: 9, fontFamily: 'Helvetica-Bold' },
-  amountWords: { backgroundColor: '#F7FAFC', borderWidth: 1, borderColor: '#EDF2F7', padding: 10, marginBottom: 12, fontSize: 9 },
-  paymentBox: { backgroundColor: '#F0FFF4', borderWidth: 1, borderColor: '#C6F6D5', padding: 10, marginBottom: 12, fontSize: 9 },
-  footer: { marginTop: 16, borderTopWidth: 1, borderTopColor: '#EDF2F7', paddingTop: 10 },
+  taxCell: {
+    flex: 1,
+    padding: 9,
+    fontSize: 9,
+    borderRightWidth: 1,
+    borderRightColor: '#E2E8F0',
+    textAlign: 'right',
+  },
+  taxCellLast: {
+    flex: 1,
+    padding: 9,
+    fontSize: 10,
+    fontFamily: 'Helvetica-Bold',
+    color: RED,
+    textAlign: 'right',
+  },
+  amountWords: {
+    backgroundColor: '#F7FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 4,
+    padding: 11,
+    marginBottom: 12,
+    fontSize: 9,
+  },
+  paymentBox: {
+    backgroundColor: '#F0FFF4',
+    borderWidth: 1,
+    borderColor: '#C6F6D5',
+    borderRadius: 4,
+    padding: 10,
+    marginBottom: 12,
+    fontSize: 9,
+  },
+  footer: { marginTop: 18, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 12 },
   disclaimer: { fontSize: 8, color: '#A0AEC0', fontStyle: 'italic', textAlign: 'center' },
 });
 
@@ -70,6 +161,7 @@ export function TaxInvoiceDocument({
   const description = buildLineItemDescription(repair);
   const cgstRate = invoice.gst_rate / 2;
   const sgstRate = invoice.gst_rate / 2;
+  const isZeroInvoice = isZeroInvoiceAmount(invoice.gross_amount);
 
   return (
     <Document>
@@ -119,6 +211,15 @@ export function TaxInvoiceDocument({
           </View>
         </View>
 
+        {isZeroInvoice ? (
+          <View style={styles.focNote}>
+            <Text>
+              No charge to customer. This invoice is issued at zero value (warranty / FOC repair).
+              GST is not applicable on a nil-value supply.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.tableHeader}>
           <Text style={[styles.tableHeaderCell, styles.colNum]}>#</Text>
           <Text style={[styles.tableHeaderCell, styles.colDesc]}>Description</Text>
@@ -132,9 +233,9 @@ export function TaxInvoiceDocument({
           <Text style={[styles.colDesc, { fontSize: 10, fontFamily: 'Helvetica-Bold' }]}>{description}</Text>
           <Text style={[styles.colHsn, { fontSize: 10 }]}>{invoice.hsn_sac}</Text>
           <Text style={[styles.colQty, { fontSize: 10 }]}>1</Text>
-          <Text style={[styles.colTaxable, { fontSize: 10 }]}>{formatCurrency(invoice.net_amount)}</Text>
+          <Text style={[styles.colTaxable, { fontSize: 10 }]}>{formatInvoiceAmount(invoice.net_amount)}</Text>
           <Text style={[styles.colTotal, { fontSize: 10, fontFamily: 'Helvetica-Bold' }]}>
-            {formatCurrency(invoice.gross_amount)}
+            {formatInvoiceAmount(invoice.gross_amount)}
           </Text>
         </View>
 
@@ -147,11 +248,11 @@ export function TaxInvoiceDocument({
             <Text style={styles.taxCellLast}>Gross Total</Text>
           </View>
           <View style={styles.taxRow}>
-            <Text style={styles.taxCell}>{formatCurrency(invoice.net_amount)}</Text>
-            <Text style={styles.taxCell}>{formatCurrency(invoice.cgst_amount)}</Text>
-            <Text style={styles.taxCell}>{formatCurrency(invoice.sgst_amount)}</Text>
-            <Text style={styles.taxCell}>{formatCurrency(invoice.tax_amount)}</Text>
-            <Text style={styles.taxCellLast}>{formatCurrency(invoice.gross_amount)}</Text>
+            <Text style={styles.taxCell}>{formatInvoiceAmount(invoice.net_amount)}</Text>
+            <Text style={styles.taxCell}>{formatInvoiceAmount(invoice.cgst_amount)}</Text>
+            <Text style={styles.taxCell}>{formatInvoiceAmount(invoice.sgst_amount)}</Text>
+            <Text style={styles.taxCell}>{formatInvoiceAmount(invoice.tax_amount)}</Text>
+            <Text style={styles.taxCellLast}>{formatInvoiceAmount(invoice.gross_amount)}</Text>
           </View>
         </View>
 
@@ -162,10 +263,10 @@ export function TaxInvoiceDocument({
           </Text>
         </View>
 
-        {invoice.payment_mode ? (
+        {invoice.payment_mode && !isZeroInvoice ? (
           <View style={styles.paymentBox}>
             <Text>
-              Payment Received: {formatCurrency(invoice.gross_amount)} via {invoice.payment_mode}
+              Payment Received: {formatInvoiceCurrency(invoice.gross_amount)} via {invoice.payment_mode}
             </Text>
           </View>
         ) : null}

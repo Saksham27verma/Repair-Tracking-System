@@ -76,19 +76,24 @@ export async function POST(
       );
     }
 
-    const validation = validateRepairForInvoice(repair);
-    if (!validation.valid) {
-      return NextResponse.json({ error: validation.errors.join(' ') }, { status: 400 });
-    }
-
     let invoiceDate = new Date().toISOString().slice(0, 10);
+    let confirmZeroAmount = false;
     try {
       const body = await request.json();
       if (body?.invoice_date && /^\d{4}-\d{2}-\d{2}$/.test(body.invoice_date)) {
         invoiceDate = body.invoice_date;
       }
+      confirmZeroAmount = Boolean(body?.confirm_zero_amount);
     } catch {
       // empty body is fine
+    }
+
+    const validation = validateRepairForInvoice(repair, { confirmZeroAmount });
+    if (!validation.valid) {
+      const message = validation.requiresZeroAmountConfirmation
+        ? 'Please confirm the zero-amount invoice for this out-of-warranty repair.'
+        : validation.errors.join(' ');
+      return NextResponse.json({ error: message }, { status: 400 });
     }
 
     const supabase = getFreshSupabaseClient();

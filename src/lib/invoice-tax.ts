@@ -59,6 +59,20 @@ export function formatCurrency(amount: number | null | undefined): string {
   return `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** PDF/HTML-safe currency — Helvetica and many PDF engines do not render ₹ correctly. */
+export function formatInvoiceCurrency(amount: number | null | undefined): string {
+  if (amount == null || Number.isNaN(amount)) return '—';
+  const value = amount.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `Rs. ${value}`;
+}
+
+export function isZeroInvoiceAmount(amount: number | null | undefined): boolean {
+  return !amount || Number(amount) === 0;
+}
+
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }

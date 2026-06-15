@@ -1,6 +1,10 @@
-import type { RepairRecord } from '@/app/types/database';
+import type { RepairRecord, WarrantyStatus } from '@/app/types/database';
 import { calculateTaxFromInclusive } from '@/lib/invoice-tax';
 import { INVOICE_DEFAULTS } from './invoice-template.config';
+
+export function isDeviceInWarranty(warranty: WarrantyStatus | string | null | undefined): boolean {
+  return Boolean(warranty && warranty !== 'Out of warranty');
+}
 
 export function resolveInvoiceGrossAmount(repair: Pick<RepairRecord, 'customer_paid' | 'repair_estimate_by_company'>): number {
   const paid = Number(repair.customer_paid) || 0;
@@ -13,12 +17,25 @@ export function resolveInvoiceGstRate(repair: Pick<RepairRecord, 'manufacturer_i
   return Number(repair.manufacturer_invoice_gst_rate) || 18;
 }
 
+export type InvoiceAmountSource =
+  | 'customer_paid'
+  | 'repair_estimate_by_company'
+  | 'zero_warranty'
+  | 'zero_foc'
+  | null;
+
+export interface InvoiceValidationOptions {
+  confirmZeroAmount?: boolean;
+}
+
 export interface InvoiceValidationResult {
   valid: boolean;
   errors: string[];
+  requiresZeroAmountConfirmation: boolean;
   grossAmount: number;
   gstRate: number;
-  amountSource: 'customer_paid' | 'repair_estimate_by_company' | null;
+  amountSource: InvoiceAmountSource;
+  isInWarranty: boolean;
 }
 
 export function validateRepairForInvoice(
@@ -32,7 +49,9 @@ export function validateRepairForInvoice(
     | 'repair_estimate_by_company'
     | 'manufacturer_invoice_gst_rate'
     | 'payment_mode'
-  >
+    | 'warranty'
+  >,
+  options: InvoiceValidationOptions = {}
 ): InvoiceValidationResult {
   const errors: string[] = [];
 
@@ -43,29 +62,33 @@ export function validateRepairForInvoice(
 
   const paid = Number(repair.customer_paid) || 0;
   const quote = Number(repair.repair_estimate_by_company) || 0;
-  let amountSource: InvoiceValidationResult['amountSource'] = null;
-
-  if (paid > 0) {
-    amountSource = 'customer_paid';
-  } else if (quote > 0) {
-    amountSource = 'repair_estimate_by_company';
-  } else {
-    errors.push('Invoice amount is required. Enter customer quote or amount paid on the repair.');
-  }
+  let amountSource: InvoiceAmountSource = null;
 
   const grossAmount = resolveInvoiceGrossAmount(repair);
   const gstRate = resolveInvoiceGstRate(repair);
+  const isInWarranty = isDeviceInWarranty(repair.warranty);
+  let requiresZeroAmountConfirmation = false;
 
-  if (grossAmount <= 0) {
-    errors.push('Invoice amount must be greater than zero.');
+  if (grossAmount > 0) {
+    amountSource = paid > 0 ? 'customer_paid' : 'repair_estimate_by_company';
+  } else if (isInWarranty) {
+    amountSource = 'zero_warranty';
+  } else if (options.confirmZeroAmount) {
+    amountSource = 'zero_foc';
+  } else {
+    requiresZeroAmountConfirmation = true;
   }
 
+  const valid = errors.length === 0 && !requiresZeroAmountConfirmation;
+
   return {
-    valid: errors.length === 0,
+    valid,
     errors,
+    requiresZeroAmountConfirmation,
     grossAmount,
     gstRate,
     amountSource,
+    isInWarranty,
   };
 }
 
