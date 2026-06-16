@@ -3,7 +3,6 @@ import { supabase } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
 import { EstimateStatus, EstimateApprovedBy } from '@/app/types/database';
 import { getFreshSupabaseClient, refreshSchemaCache } from '@/lib/supabase';
-import { validateRepairForStatus } from '@/lib/repair-stage-validation';
 
 export async function POST(request: NextRequest) {
   console.log('⭐ Estimate approval API called');
@@ -74,40 +73,13 @@ export async function POST(request: NextRequest) {
       estimate_status: EstimateStatus;
       estimate_approval_date: string;
       estimate_approved_by: EstimateApprovedBy | null;
-      status?: string;
-      date_received_from_manufacturer?: string;
     } = {
       estimate_status: status as EstimateStatus,
       estimate_approval_date: new Date().toISOString(),
       estimate_approved_by: resolvedApprovedBy,
     };
 
-    // If declining the estimate, update the repair status to "Returned from Manufacturer"
-    // but only if currently in "Sent to Company for Repair" status
-    if (status === 'Declined' && existingRepair.status === 'Sent to Company for Repair') {
-      const now = new Date().toISOString();
-      const validation = validateRepairForStatus('Returned from Manufacturer', {
-        ...existingRepair,
-        status: 'Returned from Manufacturer',
-        date_received_from_manufacturer: existingRepair.date_received_from_manufacturer || now,
-      });
-      if (!validation.isValid) {
-        return NextResponse.json(
-          {
-            success: false,
-            message:
-              validation.message ||
-              'Cannot mark repair as returned from manufacturer until required fields are filled.',
-            missing_fields: validation.missingFields,
-          },
-          { status: 400 }
-        );
-      }
-
-      updateData.status = 'Returned from Manufacturer';
-      updateData.date_received_from_manufacturer =
-        existingRepair.date_received_from_manufacturer || now;
-    }
+    // Declining only records the decision — staff schedules return via Log Movement
 
     console.log('📝 Update data:', JSON.stringify(updateData));
 
@@ -152,8 +124,8 @@ export async function POST(request: NextRequest) {
           ? 'Estimate approved on behalf of patient. Recorded as confirmed by Hearing Hope.'
           : 'Estimate approved. Your repair will proceed.'
         : resolvedApprovedBy === 'staff'
-          ? 'Estimate declined on behalf of patient. Recorded as confirmed by Hearing Hope.'
-          : 'Estimate declined. Your device will be returned without repair.'
+          ? 'Estimate declined on behalf of patient. Schedule return from manufacturer without repair.'
+          : 'Estimate declined. We will arrange to return your device without repair.'
     });
   } catch (error) {
     console.error('❌ Unexpected error in estimate approval:', error);

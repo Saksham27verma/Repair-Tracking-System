@@ -1,6 +1,10 @@
 import { MovementType, PaymentMode, RepairRecord, RepairStatus, WarrantyAfterRepair } from '@/app/types/database';
 import { calculateTaxFromInclusive } from '@/lib/invoice-tax';
-import { isEstimateResolved, requiresPatientEstimate } from '@/lib/estimate-approval';
+import {
+  isEstimateDeclined,
+  isEstimateResolved,
+  requiresPatientEstimate,
+} from '@/lib/estimate-approval';
 
 type StageValidationField =
   | 'patient_name'
@@ -143,7 +147,6 @@ export const STATUS_REQUIRED_FIELDS: Record<RepairStatus, StageValidationField[]
     'manufacturer_invoice_total',
     'warranty_after_repair',
     'pickup_center_id',
-    'estimate_approval',
   ],
   Completed: [
     'patient_name',
@@ -162,9 +165,15 @@ export const STATUS_REQUIRED_FIELDS: Record<RepairStatus, StageValidationField[]
     'customer_paid',
     'payment_mode',
     'date_out_to_customer',
-    'estimate_approval',
   ],
 };
+
+const DECLINED_RETURN_EXCLUDED_FIELDS: StageValidationField[] = [
+  'manufacturer_invoice_number',
+  'manufacturer_invoice_date',
+  'manufacturer_invoice_total',
+  'warranty_after_repair',
+];
 
 export const MOVEMENT_TO_STATUS: Partial<Record<MovementType, RepairStatus>> = {
   sent_to_manufacturer: 'Sent to Company for Repair',
@@ -188,8 +197,7 @@ export const TRANSITION_INPUT_FIELDS: Partial<Record<RepairStatus, StageValidati
 
 /** Extra blocking checks at specific transitions (already captured on earlier steps) */
 const TRANSITION_BLOCKING_FIELDS: Partial<Record<RepairStatus, StageValidationField[]>> = {
-  'Ready for Pickup': ['estimate_approval'],
-  Completed: ['estimate_approval'],
+  'Returned from Manufacturer': ['estimate_approval'],
 };
 
 type TransitionValueKey = keyof TransitionFieldValues;
@@ -234,13 +242,22 @@ export interface TransitionFieldValues {
   pickup_center_id?: string;
 }
 
-export function getTransitionFieldsForStatus(status: RepairStatus): StageValidationField[] {
+export function getTransitionFieldsForStatus(
+  status: RepairStatus,
+  repair?: StageValidationInput
+): StageValidationField[] {
+  if (status === 'Returned from Manufacturer' && isEstimateDeclined(repair ?? {})) {
+    return [];
+  }
   return TRANSITION_INPUT_FIELDS[status] || [];
 }
 
-export function getTransitionFieldsForMovement(movementType: MovementType): StageValidationField[] {
+export function getTransitionFieldsForMovement(
+  movementType: MovementType,
+  repair?: StageValidationInput
+): StageValidationField[] {
   const status = MOVEMENT_TO_STATUS[movementType];
-  return status ? getTransitionFieldsForStatus(status) : [];
+  return status ? getTransitionFieldsForStatus(status, repair) : [];
 }
 
 export function getCustomerQuoteFromTransition(values: TransitionFieldValues): number {
@@ -331,10 +348,12 @@ export function buildRepairUpdatesFromTransition(
     const invoiceTotal = Number(values.manufacturer_invoice_total) || 0;
     const quote = invoiceTotal + (markup || 0);
     updates.repair_estimate_by_company = quote > 0 ? Math.round(quote * 100) / 100 : null;
-    if (quote > 0) {
-      updates.estimate_status = 'Pending';
-    } else if (values.manufacturer_invoice_is_foc && invoiceTotal === 0) {
-      updates.estimate_status = 'Not Required';
+    if (targetStatus !== 'Returned from Manufacturer') {
+      if (quote > 0) {
+        updates.estimate_status = 'Pending';
+      } else if (values.manufacturer_invoice_is_foc && invoiceTotal === 0) {
+        updates.estimate_status = 'Not Required';
+      }
     }
   }
   if (shouldApplyTransitionValue('customer_paid', targetStatus) && values.customer_paid !== undefined) {
@@ -381,7 +400,7 @@ export function validateTransitionFields(
   baseRepair: StageValidationInput = {}
 ): StageValidationResult {
   const fieldsToCheck = [
-    ...getTransitionFieldsForStatus(targetStatus),
+    ...getTransitionFieldsForStatus(targetStatus, baseRepair),
     ...(TRANSITION_BLOCKING_FIELDS[targetStatus] || []),
   ];
   const updates = buildRepairUpdatesFromTransition(values, targetStatus);
@@ -408,7 +427,12 @@ export function validateRepairForStatus(
   targetStatus: RepairStatus,
   repair: StageValidationInput
 ): StageValidationResult {
-  const requiredFields = STATUS_REQUIRED_FIELDS[targetStatus] || [];
+  let requiredFields = STATUS_REQUIRED_FIELDS[targetStatus] || [];
+  if (targetStatus === 'Returned from Manufacturer' && isEstimateDeclined(repair)) {
+    requiredFields = requiredFields.filter(
+      (field) => !DECLINED_RETURN_EXCLUDED_FIELDS.includes(field)
+    );
+  }
   const missingFields = requiredFields.filter((field) => REQUIREMENT_CHECKS[field](repair));
   const missingLabels = missingFields.map((field) => FIELD_LABELS[field]);
 

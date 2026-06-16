@@ -129,8 +129,8 @@ export default async function RepairStatusPage({
 
       <Paper elevation={0} sx={{ p: { xs: 2, sm: 3, md: 4 }, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
 
-        {/* Show estimate approval UI when a quote is pending */}
-        {hasEstimate && estimateStatus === 'Pending' && (
+        {/* Show estimate approval UI while device is still with manufacturer */}
+        {hasEstimate && estimateStatus === 'Pending' && repair.status === 'Sent to Company for Repair' && (
           <EstimateApproval 
             repairId={repair.repair_id} 
             estimate={repair.repair_estimate_by_company || 0} 
@@ -183,7 +183,6 @@ export default async function RepairStatusPage({
           size="large"
           withTooltips={true}
           estimateStatus={estimateStatus}
-          repairEstimate={repair.repair_estimate_by_company}
         />
 
         <Box sx={{ my: 4 }}>

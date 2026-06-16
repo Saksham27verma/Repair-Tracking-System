@@ -16,7 +16,8 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import dayjs, { Dayjs } from 'dayjs';
-import { PaymentMode, RepairStatus, WarrantyAfterRepair } from '@/app/types/database';
+import { EstimateStatus, PaymentMode, RepairStatus, WarrantyAfterRepair } from '@/app/types/database';
+import { isEstimateDeclined } from '@/lib/estimate-approval';
 import CenterSelect from '@/app/components/CenterSelect';
 import ManufacturerInvoiceFocConfirm, {
   isExplicitZeroInvoiceTotal,
@@ -44,6 +45,7 @@ interface StageTransitionFieldsProps {
   hidePickupCenter?: boolean;
   /** Use saved repair quote when transition values have not been reloaded yet */
   customerQuoteOverride?: number | null;
+  estimateStatus?: EstimateStatus | null;
 }
 
 function FinancialSummary({
@@ -104,9 +106,13 @@ export default function StageTransitionFields({
   errors = {},
   hidePickupCenter = false,
   customerQuoteOverride,
+  estimateStatus,
 }: StageTransitionFieldsProps) {
-  const fields = getTransitionFieldsForStatus(targetStatus);
-  if (fields.length === 0) return null;
+  const repairContext = { estimate_status: estimateStatus ?? undefined };
+  const fields = getTransitionFieldsForStatus(targetStatus, repairContext);
+  const isDeclinedReturn =
+    targetStatus === 'Returned from Manufacturer' && isEstimateDeclined(repairContext);
+  if (fields.length === 0 && !isDeclinedReturn) return null;
 
   const setField = <K extends keyof TransitionFieldValues>(
     key: K,
@@ -150,13 +156,23 @@ export default function StageTransitionFields({
       {heading && (
         <>
           <Typography variant="subtitle2" fontWeight={700} color="warning.dark">
-            {heading}
+            {targetStatus === 'Returned from Manufacturer' && isEstimateDeclined(repairContext)
+              ? 'Return without repair'
+              : heading}
           </Typography>
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1.5 }}>
-            Fill in all details below to complete this step
+            {targetStatus === 'Returned from Manufacturer' && isEstimateDeclined(repairContext)
+              ? 'The patient declined the estimate. Select the receiving center above and log the return.'
+              : 'Fill in all details below to complete this step'}
           </Typography>
           <Divider sx={{ mb: 2 }} />
         </>
+      )}
+
+      {targetStatus === 'Returned from Manufacturer' && isEstimateDeclined(repairContext) && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Repair discontinued — device is returning from the manufacturer without being repaired.
+        </Alert>
       )}
 
       <Grid container spacing={2}>

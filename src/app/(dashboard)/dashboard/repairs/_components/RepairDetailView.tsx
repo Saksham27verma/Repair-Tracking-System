@@ -14,7 +14,9 @@ import RepairStatusStepper from '@/app/components/RepairStatusStepper';
 import RepairDetailTracking from './RepairDetailTracking';
 import RepairDetailSummary from './RepairDetailSummary';
 import RepairDetailSections from './RepairDetailSections';
+import RepairEstimateSetup from '@/app/components/RepairEstimateSetup';
 import StaffEstimateApproval from '@/app/components/StaffEstimateApproval';
+import SendEstimateApprovalDialog from '@/app/components/SendEstimateApprovalDialog';
 import {
   RepairUpdatePayload,
   getEffectiveTrackingState,
@@ -108,6 +110,18 @@ export default function RepairDetailView({
   const centerName = trackingState.centerName;
   const pickupCenterName = trackingState.pickupCenterName;
 
+  const beforeManufacturerReturn =
+    status === 'Sent to Company for Repair' && !repair.date_received_from_manufacturer;
+  const hasCustomerQuote =
+    Boolean(repair.repair_estimate_by_company && repair.repair_estimate_by_company > 0);
+  const needsQuoteSetup =
+    beforeManufacturerReturn &&
+    !hasCustomerQuote &&
+    estimateStatus !== 'Approved' &&
+    estimateStatus !== 'Declined';
+  const showEstimateWorkflow =
+    beforeManufacturerReturn && (needsQuoteSetup || hasCustomerQuote);
+
   return (
     <Box>
       <RepairDetailSummary
@@ -130,27 +144,65 @@ export default function RepairDetailView({
       <ContentCard title="Repair Progress" sx={{ mb: 3 }}>
         <Box sx={{ mb: 2.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <StatusBadge status={status} />
-          {estimateStatus && estimateStatus !== 'Not Required' && (
-            <StatusBadge status={estimateStatus} type="estimate" />
-          )}
         </Box>
         <RepairStatusStepper
           currentStatus={status}
           size="medium"
           withTooltips
           estimateStatus={estimateStatus}
-          repairEstimate={repair.repair_estimate_by_company}
         />
       </ContentCard>
 
-      {repair.repair_estimate_by_company && repair.repair_estimate_by_company > 0 && estimateStatus && (
+      {showEstimateWorkflow && needsQuoteSetup && (
+        <RepairEstimateSetup
+          repairId={repair.id}
+          existingManufacturerEstimate={repair.manufacturer_invoice_estimate}
+          existingMarkup={repair.estimate_by_us}
+          onSaved={async () => {
+            await onRepairRefresh?.();
+            router.refresh();
+          }}
+        />
+      )}
+
+      {beforeManufacturerReturn &&
+        needsQuoteSetup &&
+        estimateStatus !== 'Approved' &&
+        estimateStatus !== 'Declined' && (
+          <Box sx={{ mb: 3 }}>
+            <SendEstimateApprovalDialog
+              repairId={repair.id}
+              repairPublicId={repair.repair_id}
+              status={status}
+              patientName={repair.patient_name}
+              patientEmail={repair.email}
+              manufacturerEstimate={repair.manufacturer_invoice_estimate}
+              hopeMarkup={repair.estimate_by_us}
+              customerQuote={repair.repair_estimate_by_company}
+              estimateStatus={estimateStatus}
+              requestSentAt={repair.estimate_approval_request_sent_at}
+              onSent={async () => {
+                await onRepairRefresh?.();
+                router.refresh();
+              }}
+            />
+          </Box>
+        )}
+
+      {showEstimateWorkflow && hasCustomerQuote && estimateStatus && (
         <StaffEstimateApproval
           repairId={repair.id}
           repairPublicId={repair.repair_id}
-          estimate={repair.repair_estimate_by_company}
+          patientName={repair.patient_name}
+          estimate={repair.repair_estimate_by_company!}
           estimateStatus={estimateStatus}
           estimateApprovedBy={repair.estimate_approved_by}
           estimateApprovalDate={repair.estimate_approval_date}
+          patientEmail={repair.email}
+          manufacturerEstimate={repair.manufacturer_invoice_estimate}
+          hopeMarkup={repair.estimate_by_us}
+          requestSentAt={repair.estimate_approval_request_sent_at}
+          beforeReturn
           onApproved={async () => {
             await onRepairRefresh?.();
             router.refresh();

@@ -97,7 +97,7 @@ describe('validateRepairForStatus', () => {
     expect(result.isValid).toBe(false);
   });
 
-  it('blocks ready for pickup when estimate approval is pending', () => {
+  it('allows ready for pickup even when estimate was pending (approval happens before return)', () => {
     const result = validateRepairForStatus('Ready for Pickup', {
       status: 'Ready for Pickup',
       patient_name: 'John Doe',
@@ -117,8 +117,7 @@ describe('validateRepairForStatus', () => {
       estimate_status: 'Pending',
     });
 
-    expect(result.isValid).toBe(false);
-    expect(result.missingFields).toContain('estimate_approval');
+    expect(result.isValid).toBe(true);
   });
 
   it('allows ready for pickup when estimate is approved', () => {
@@ -236,5 +235,75 @@ describe('validateTransitionFields', () => {
     );
 
     expect(updates).toEqual({ pickup_center_id: 'center-1' });
+  });
+
+  it('blocks return from manufacturer when estimate approval is pending', () => {
+    const result = validateTransitionFields(
+      'Returned from Manufacturer',
+      {},
+      {
+        patient_name: 'John Doe',
+        phone: '9999999999',
+        model_item_name: 'Model X',
+        serial_no: 'SN-1',
+        warranty: 'Out of warranty',
+        purpose: 'Service',
+        current_center_id: 'center-1',
+        date_out_to_manufacturer: '2026-06-10T10:00:00.000Z',
+        repair_estimate_by_company: 3000,
+        estimate_status: 'Pending',
+      }
+    );
+
+    expect(result.isValid).toBe(false);
+    expect(result.missingFields).toContain('estimate_approval');
+  });
+
+  it('allows return from manufacturer when estimate was declined (no invoice required)', () => {
+    const result = validateTransitionFields(
+      'Returned from Manufacturer',
+      {},
+      {
+        patient_name: 'John Doe',
+        phone: '9999999999',
+        model_item_name: 'Model X',
+        serial_no: 'SN-1',
+        warranty: 'Out of warranty',
+        purpose: 'Service',
+        current_center_id: 'center-1',
+        date_out_to_manufacturer: '2026-06-10T10:00:00.000Z',
+        repair_estimate_by_company: 3000,
+        estimate_status: 'Declined',
+      }
+    );
+
+    expect(result.isValid).toBe(true);
+    expect(result.missingFields).not.toContain('manufacturer_invoice_number');
+  });
+
+  it('allows return from manufacturer when estimate is approved with invoice details', () => {
+    const result = validateTransitionFields(
+      'Returned from Manufacturer',
+      {
+        manufacturer_invoice_number: 'INV-12',
+        manufacturer_invoice_date: '2026-06-11',
+        manufacturer_invoice_total: 2500,
+        warranty_after_repair: '1 year',
+      },
+      {
+        patient_name: 'John Doe',
+        phone: '9999999999',
+        model_item_name: 'Model X',
+        serial_no: 'SN-1',
+        warranty: 'Out of warranty',
+        purpose: 'Service',
+        current_center_id: 'center-1',
+        date_out_to_manufacturer: '2026-06-10T10:00:00.000Z',
+        repair_estimate_by_company: 3000,
+        estimate_status: 'Approved',
+      }
+    );
+
+    expect(result.isValid).toBe(true);
   });
 });

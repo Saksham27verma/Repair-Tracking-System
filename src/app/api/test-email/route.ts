@@ -44,6 +44,15 @@ export async function GET(request: NextRequest) {
           productName: 'Test Device'
         };
         break;
+      case 'estimateApprovalRequest':
+        templateData = {
+          repairId: 'TEST-12345',
+          customerName: 'Test Customer',
+          estimate: 3500,
+          productName: 'Test Device',
+          approvalUrl: 'http://localhost:3000/repairs/TEST-12345',
+        };
+        break;
       case 'estimateReady':
         templateData = {
           repairId: 'TEST-12345',

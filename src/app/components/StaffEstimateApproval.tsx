@@ -21,24 +21,38 @@ import {
 import { EstimateApprovedBy, EstimateStatus } from '@/app/types/database';
 import { formatCurrency } from '@/lib/invoice-tax';
 import { getEstimateApprovalLabel } from '@/lib/estimate-approval';
+import SendEstimateApprovalDialog from '@/app/components/SendEstimateApprovalDialog';
 
 interface StaffEstimateApprovalProps {
   repairId: string;
   repairPublicId: string;
+  patientName: string;
   estimate: number;
   estimateStatus: EstimateStatus;
   estimateApprovedBy?: EstimateApprovedBy | null;
   estimateApprovalDate?: string | null;
+  patientEmail?: string | null;
+  manufacturerEstimate?: number | null;
+  hopeMarkup?: number | null;
+  requestSentAt?: string | null;
+  /** Quote must be approved before device return from manufacturer */
+  beforeReturn?: boolean;
   onApproved?: () => void;
 }
 
 export default function StaffEstimateApproval({
   repairId,
   repairPublicId,
+  patientName,
   estimate,
   estimateStatus,
   estimateApprovedBy,
   estimateApprovalDate,
+  patientEmail,
+  manufacturerEstimate,
+  hopeMarkup,
+  requestSentAt,
+  beforeReturn = false,
   onApproved,
 }: StaffEstimateApprovalProps) {
   const [loading, setLoading] = useState(false);
@@ -101,9 +115,17 @@ export default function StaffEstimateApproval({
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               Customer quote: <strong>{formatCurrency(estimate)}</strong>
               {isPending
-                ? ' — waiting for patient approval before the repair can proceed to pickup.'
+                ? beforeReturn
+                  ? ' — patient must approve or decline before the device can be returned from the manufacturer.'
+                  : ' — waiting for patient approval before the repair can proceed to pickup.'
                 : ` — ${estimateStatus.toLowerCase()}${estimateApprovedBy ? ` (${getEstimateApprovalLabel(estimateApprovedBy).toLowerCase()})` : ''}.`}
             </Typography>
+            {isResolved && estimateStatus === 'Declined' && beforeReturn && (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                Repair discontinued. Use <strong>Log Movement → Return from Manufacturer</strong> to
+                schedule the device coming back without repair.
+              </Alert>
+            )}
             {estimateApprovalDate && isResolved && (
               <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
                 Recorded {new Date(estimateApprovalDate).toLocaleString('en-IN')}
@@ -117,7 +139,27 @@ export default function StaffEstimateApproval({
             )}
 
             {isPending && (
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 2 }}>
+              <>
+                {!patientEmail && (
+                  <Alert severity="warning" sx={{ mt: 1.5 }}>
+                    No patient email on file. Use the button below to add an email and send the
+                    approval request.
+                  </Alert>
+                )}
+                <SendEstimateApprovalDialog
+                  repairId={repairId}
+                  repairPublicId={repairPublicId}
+                  status="Sent to Company for Repair"
+                  patientName={patientName}
+                  patientEmail={patientEmail}
+                  manufacturerEstimate={manufacturerEstimate}
+                  hopeMarkup={hopeMarkup}
+                  customerQuote={estimate}
+                  estimateStatus={estimateStatus}
+                  requestSentAt={requestSentAt}
+                  onSent={onApproved}
+                />
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 2 }}>
                 <Button
                   variant="contained"
                   size="small"
@@ -138,6 +180,7 @@ export default function StaffEstimateApproval({
                   Decline on behalf of patient (phone)
                 </Button>
               </Stack>
+              </>
             )}
 
             {isResolved && estimateApprovedBy === 'staff' && (

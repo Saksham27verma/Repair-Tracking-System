@@ -36,7 +36,7 @@ import {
   validateTransitionFields,
   mapStageFieldErrors,
 } from '@/lib/repair-stage-validation';
-import { isEstimateApprovalPending } from '@/lib/estimate-approval';
+import { isEstimateApprovalPending, isEstimateDeclined } from '@/lib/estimate-approval';
 
 interface TransferDialogProps {
   open: boolean;
@@ -180,9 +180,15 @@ export default function TransferDialog({
     repair_estimate_by_company: repair?.repair_estimate_by_company,
     estimate_status: repair?.estimate_status,
   });
+  const estimateDeclined = isEstimateDeclined({
+    estimate_status: repair?.estimate_status,
+  });
   const movementBlockedByEstimate =
-    estimateBlocked &&
-    (movementType === 'ready_for_pickup' || movementType === 'delivered');
+    estimateBlocked && movementType === 'returned_from_manufacturer';
+
+  const returnMovementDescription = estimateDeclined
+    ? 'Device returning unrepaired — select receiving center'
+    : 'Device received back after repair — enter manufacturer invoice and warranty below';
 
   const handleSubmit = async () => {
     setError('');
@@ -351,9 +357,9 @@ export default function TransferDialog({
 
         {movementBlockedByEstimate && (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            The patient must approve or decline the repair estimate before you can mark this device
-            ready for pickup or delivered. Use the estimate approval section on the repair detail page
-            if the patient confirmed by phone.
+            The patient must approve or decline the repair estimate before the device can be
+            returned from the manufacturer. Set the quote above and use the estimate approval
+            section, or confirm by phone.
           </Alert>
         )}
 
@@ -384,7 +390,9 @@ export default function TransferDialog({
               </TextField>
               {selectedOption && (
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                  {selectedOption.description}
+                  {movementType === 'returned_from_manufacturer'
+                    ? returnMovementDescription
+                    : selectedOption.description}
                 </Typography>
               )}
             </Grid>
@@ -415,6 +423,7 @@ export default function TransferDialog({
                   errors={fieldErrors}
                   hidePickupCenter={movementType === 'ready_for_pickup'}
                   customerQuoteOverride={repair?.repair_estimate_by_company}
+                  estimateStatus={repair?.estimate_status}
                 />
               </Grid>
             )}

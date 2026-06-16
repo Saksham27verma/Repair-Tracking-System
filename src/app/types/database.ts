@@ -463,6 +463,7 @@ export interface RepairRecord {
   estimate_status?: EstimateStatus;
   estimate_approval_date?: string;
   estimate_approved_by?: EstimateApprovedBy;
+  estimate_approval_request_sent_at?: string;
   
   // Additional Information
   programming_done?: boolean;
