@@ -70,6 +70,7 @@ export default function EstimateApproval({
         body: JSON.stringify({
           repairId,
           status: newStatus,
+          approvedBy: 'patient',
         }),
       });
 
@@ -103,7 +104,8 @@ export default function EstimateApproval({
             .from('repairs')
             .update({
               estimate_status: newStatus,
-              estimate_approval_date: new Date().toISOString()
+              estimate_approval_date: new Date().toISOString(),
+              estimate_approved_by: 'patient',
             })
             .eq('id', repair.id);
             

@@ -16,11 +16,23 @@ BEGIN
     
     -- Add estimate_approval_date column if it doesn't exist
     IF NOT EXISTS (
-        SELECT 1 
-        FROM information_schema.columns 
+        SELECT 1
+        FROM information_schema.columns
         WHERE table_name = 'repairs' AND column_name = 'estimate_approval_date'
     ) THEN
         ALTER TABLE repairs ADD COLUMN estimate_approval_date TIMESTAMPTZ;
+    END IF;
+
+    -- Add estimate_approved_by column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'repairs' AND column_name = 'estimate_approved_by'
+    ) THEN
+        ALTER TABLE repairs ADD COLUMN estimate_approved_by TEXT;
+        ALTER TABLE repairs
+        ADD CONSTRAINT estimate_approved_by_check
+        CHECK (estimate_approved_by IS NULL OR estimate_approved_by IN ('patient', 'staff'));
     END IF;
 END
 $$;

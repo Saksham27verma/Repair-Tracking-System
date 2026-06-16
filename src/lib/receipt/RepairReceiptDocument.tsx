@@ -4,6 +4,7 @@ import {
   formatEarLabel,
   formatSerialNumbers,
   getDeviceFormatLabel,
+  hasDualSerialIntake,
   inferDeviceFormat,
 } from '@/lib/device-format';
 import type { RepairRecord, Center } from '@/app/types/database';
@@ -88,7 +89,7 @@ export function RepairReceiptDocument({ repair, receivingCenter, logoDataUri }: 
   const trackingInstructions = RECEIPT_DEFAULTS.trackingInstructions.replace('{{PATIENT_PHONE}}', repair.phone);
 
   const deviceRows =
-    deviceFormat === 'kit' && repair.serial_no_2
+    hasDualSerialIntake(deviceFormat, repair.ear) && repair.serial_no_2
       ? [
           { model: repair.model_item_name, ear: 'Left', serial: repair.serial_no, showFormat: true },
           { model: repair.model_item_name, ear: 'Right', serial: repair.serial_no_2, showFormat: false },

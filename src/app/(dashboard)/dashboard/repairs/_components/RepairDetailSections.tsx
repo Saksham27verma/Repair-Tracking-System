@@ -11,8 +11,9 @@ import {
 import { RepairRecord, EstimateStatus } from '@/app/types/database';
 import ContentCard from '@/app/components/ui/ContentCard';
 import StatusBadge from '@/app/components/ui/StatusBadge';
-import { formatEarLabel, getDeviceFormatLabel, inferDeviceFormat } from '@/lib/device-format';
+import { formatEarLabel, getDeviceFormatLabel, hasDualSerialIntake, inferDeviceFormat } from '@/lib/device-format';
 import { formatCurrency } from '@/lib/invoice-tax';
+import { getEstimateApprovalLabel } from '@/lib/estimate-approval';
 
 interface RepairDetailSectionsProps {
   repair: RepairRecord;
@@ -90,7 +91,6 @@ export default function RepairDetailSections({ repair, estimateStatus }: RepairD
             <DetailRow label="Name" value={repair.patient_name} emphasize />
             <DetailRow label="Phone" value={repair.phone} />
             <DetailRow label="Email" value={repair.email} />
-            <DetailRow label="Company" value={repair.company} />
           </Box>
         </ContentCard>
       </Grid>
@@ -100,8 +100,9 @@ export default function RepairDetailSections({ repair, estimateStatus }: RepairD
           <SectionHeader icon={<DeviceIcon fontSize="small" />} title="Device & Repair" />
           <Box sx={{ mt: 1.5 }}>
             <DetailRow label="Model" value={repair.model_item_name} emphasize />
+            <DetailRow label="Company" value={repair.company} />
             <DetailRow label="Intake" value={getDeviceFormatLabel(deviceFormat)} />
-            {deviceFormat === 'kit' ? (
+            {hasDualSerialIntake(deviceFormat, repair.ear) ? (
               <>
                 <DetailRow label="Left Serial" value={repair.serial_no} />
                 <DetailRow label="Right Serial" value={repair.serial_no_2} />
@@ -144,7 +145,19 @@ export default function RepairDetailSections({ repair, estimateStatus }: RepairD
                 </Typography>
                 {estimateStatus && estimateStatus !== 'Not Required' && (
                   <Box sx={{ mt: 1 }}>
-                    <StatusBadge status={estimateStatus} type="estimate" />
+                    <StatusBadge
+                      status={
+                        estimateStatus === 'Approved' && repair.estimate_approved_by
+                          ? getEstimateApprovalLabel(repair.estimate_approved_by)
+                          : estimateStatus
+                      }
+                      type="estimate"
+                    />
+                    {repair.estimate_approval_date && estimateStatus !== 'Pending' && (
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                        {new Date(repair.estimate_approval_date).toLocaleString('en-IN')}
+                      </Typography>
+                    )}
                   </Box>
                 )}
               </Box>

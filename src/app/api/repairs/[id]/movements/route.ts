@@ -6,7 +6,7 @@ import {
   getStatusForMovement,
   MovementInput,
 } from '@/lib/tracking';
-import { validateRepairForStatus } from '@/lib/repair-stage-validation';
+import { validateTransitionFields, type TransitionFieldValues } from '@/lib/repair-stage-validation';
 import { MovementType } from '@/app/types/database';
 
 export async function GET(
@@ -68,7 +68,7 @@ export async function POST(
     const { data: repair, error: repairError } = await supabase
       .from('repairs')
       .select(
-        'id, status, patient_name, phone, model_item_name, serial_no, warranty, purpose, current_center_id, pickup_center_id, current_location_type, date_out_to_manufacturer, date_received_from_manufacturer, date_out_to_customer, manufacturer_invoice_number, manufacturer_invoice_date, manufacturer_invoice_total, manufacturer_invoice_is_foc, warranty_after_repair, customer_paid, payment_mode'
+        'id, status, patient_name, phone, model_item_name, serial_no, warranty, purpose, current_center_id, pickup_center_id, current_location_type, date_out_to_manufacturer, date_received_from_manufacturer, date_out_to_customer, manufacturer_invoice_number, manufacturer_invoice_date, manufacturer_invoice_total, manufacturer_invoice_is_foc, warranty_after_repair, customer_paid, payment_mode, repair_estimate_by_company, estimate_status'
       )
       .eq('id', params.id)
       .single();
@@ -151,17 +151,26 @@ export async function POST(
     );
 
     if (newStatus) {
-      const validation = validateRepairForStatus(newStatus, {
-        ...repair,
-        ...repairFieldUpdates,
-        ...dateUpdates,
-        status: newStatus,
-        current_center_id: locationUpdate.current_center_id || repair.current_center_id,
-        pickup_center_id:
-          movementInput.movement_type === 'ready_for_pickup' && movementInput.to_center_id
-            ? movementInput.to_center_id
-            : (repairFieldUpdates.pickup_center_id as string | undefined) || repair.pickup_center_id,
-      });
+      const resolvedCenterId =
+        locationUpdate.current_center_id ||
+        movementInput.to_center_id ||
+        repair.current_center_id;
+
+      const validation = validateTransitionFields(
+        newStatus,
+        repairFieldUpdates as TransitionFieldValues,
+        {
+          ...repair,
+          ...dateUpdates,
+          status: newStatus,
+          current_center_id: resolvedCenterId,
+          receiving_center_id: resolvedCenterId,
+          pickup_center_id:
+            movementInput.movement_type === 'ready_for_pickup' && movementInput.to_center_id
+              ? movementInput.to_center_id
+              : (repairFieldUpdates.pickup_center_id as string | undefined) || repair.pickup_center_id,
+        }
+      );
 
       if (!validation.isValid) {
         return NextResponse.json(

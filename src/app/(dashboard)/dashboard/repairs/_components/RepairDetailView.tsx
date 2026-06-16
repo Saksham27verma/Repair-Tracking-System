@@ -14,6 +14,7 @@ import RepairStatusStepper from '@/app/components/RepairStatusStepper';
 import RepairDetailTracking from './RepairDetailTracking';
 import RepairDetailSummary from './RepairDetailSummary';
 import RepairDetailSections from './RepairDetailSections';
+import StaffEstimateApproval from '@/app/components/StaffEstimateApproval';
 import {
   RepairUpdatePayload,
   getEffectiveTrackingState,
@@ -28,12 +29,14 @@ interface RepairDetailViewProps {
   };
   estimateStatus?: EstimateStatus;
   visitStats: CustomerVisitStats | null;
+  onRepairRefresh?: () => Promise<void>;
 }
 
 export default function RepairDetailView({
   repair,
   estimateStatus,
   visitStats,
+  onRepairRefresh,
 }: RepairDetailViewProps) {
   const router = useRouter();
   const [movements, setMovements] = useState<RepairMovement[]>([]);
@@ -75,8 +78,9 @@ export default function RepairDetailView({
     }
   }, [movementsLoading, movements, repair, router]);
 
-  const handleRepairUpdated = (updated: RepairUpdatePayload) => {
-    fetchMovements();
+  const handleRepairUpdated = async (updated: RepairUpdatePayload) => {
+    await fetchMovements();
+    await onRepairRefresh?.();
     router.refresh();
     if (updated) {
       setTrackingState(
@@ -135,8 +139,24 @@ export default function RepairDetailView({
           size="medium"
           withTooltips
           estimateStatus={estimateStatus}
+          repairEstimate={repair.repair_estimate_by_company}
         />
       </ContentCard>
+
+      {repair.repair_estimate_by_company && repair.repair_estimate_by_company > 0 && estimateStatus && (
+        <StaffEstimateApproval
+          repairId={repair.id}
+          repairPublicId={repair.repair_id}
+          estimate={repair.repair_estimate_by_company}
+          estimateStatus={estimateStatus}
+          estimateApprovedBy={repair.estimate_approved_by}
+          estimateApprovalDate={repair.estimate_approval_date}
+          onApproved={async () => {
+            await onRepairRefresh?.();
+            router.refresh();
+          }}
+        />
+      )}
 
       <RepairDetailTracking
         repairId={repair.id}

@@ -26,7 +26,7 @@ import {
   validateRepairForInvoice,
 } from '@/lib/invoice/invoice-utils';
 import { buildLineItemDescription } from '@/lib/invoice/invoice-description';
-import { formatEarLabel, formatSerialNumbers, inferDeviceFormat } from '@/lib/device-format';
+import { formatEarLabel, formatSerialNumbers, hasDualSerialIntake, inferDeviceFormat } from '@/lib/device-format';
 import ZeroInvoiceConfirm from '@/app/components/ZeroInvoiceConfirm';
 
 interface CreateInvoiceDialogProps {
@@ -88,7 +88,7 @@ export default function CreateInvoiceDialog({
 
   const deviceFormat = inferDeviceFormat(repair);
   const serialDisplay =
-    deviceFormat === 'kit' && repair.serial_no_2
+    hasDualSerialIntake(deviceFormat, repair.ear) && repair.serial_no_2
       ? `Left: ${repair.serial_no}, Right: ${repair.serial_no_2}`
       : formatSerialNumbers(repair);
 

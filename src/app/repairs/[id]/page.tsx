@@ -24,20 +24,22 @@ import {
   AttachMoney as MoneyIcon,
 } from '@mui/icons-material';
 import { getFreshSupabaseClient } from '@/lib/supabase';
-import { RepairStatus, EstimateStatus } from '@/app/types/database';
+import { RepairStatus, EstimateStatus, EstimateApprovedBy } from '@/app/types/database';
 import { Database } from '@/app/types/supabase';
 import RefreshButton from '@/app/components/RefreshButton';
-import { formatEarLabel, getDeviceFormatLabel, inferDeviceFormat } from '@/lib/device-format';
+import { formatEarLabel, getDeviceFormatLabel, hasDualSerialIntake, inferDeviceFormat } from '@/lib/device-format';
 import EstimateApproval from '@/app/components/EstimateApproval';
 import RepairStatusStepper from '@/app/components/RepairStatusStepper';
 import HelpSupportButton from '@/app/components/HelpSupportButton';
 import PublicRepairTracking from '@/app/components/PublicRepairTracking';
 import ContentCard from '@/app/components/ui/ContentCard';
 import StatusBadge from '@/app/components/ui/StatusBadge';
+import { getEstimateApprovalLabel, getEstimateApprovalPatientMessage } from '@/lib/estimate-approval';
 
 type RepairRecord = Database['public']['Tables']['repairs']['Row'] & {
   estimate_status?: EstimateStatus;
   estimate_approval_date?: string;
+  estimate_approved_by?: EstimateApprovedBy;
 };
 
 const REPAIR_STEPS: RepairStatus[] = [
@@ -127,8 +129,8 @@ export default async function RepairStatusPage({
 
       <Paper elevation={0} sx={{ p: { xs: 2, sm: 3, md: 4 }, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
 
-        {/* Show estimate approval UI if there's a pending estimate */}
-        {hasEstimate && estimateStatus === 'Pending' && repair.status === 'Sent to Company for Repair' && (
+        {/* Show estimate approval UI when a quote is pending */}
+        {hasEstimate && estimateStatus === 'Pending' && (
           <EstimateApproval 
             repairId={repair.repair_id} 
             estimate={repair.repair_estimate_by_company || 0} 
@@ -152,15 +154,26 @@ export default async function RepairStatusPage({
             <MoneyIcon color={estimateStatus === 'Approved' ? 'success' : 'error'} />
             <Box>
               <Typography variant="body1" fontWeight="medium">
-                {estimateStatus === 'Approved' 
-                  ? 'You approved the repair estimate.' 
-                  : estimateStatus === 'Declined' && repair.status === 'Sent to Company for Repair'
-                    ? 'You declined the repair estimate. We will notify you when your device is returned from the manufacturer.'
-                    : 'You declined the repair estimate. We will contact you about returning your device.'}
+                {getEstimateApprovalPatientMessage(estimateStatus, repair.estimate_approved_by)}
+                {estimateStatus === 'Declined' && repair.status === 'Sent to Company for Repair'
+                  ? ' We will notify you when your device is returned from the manufacturer.'
+                  : estimateStatus === 'Declined'
+                    ? ' We will contact you about returning your device.'
+                    : ''}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Estimate: ₹{repair.repair_estimate_by_company}
               </Typography>
+              {repair.estimate_approved_by === 'staff' && repair.estimate_approval_date && (
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                  Confirmed by Hearing Hope on{' '}
+                  {new Date(repair.estimate_approval_date).toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </Typography>
+              )}
             </Box>
           </Paper>
         )}
@@ -170,6 +183,7 @@ export default async function RepairStatusPage({
           size="large"
           withTooltips={true}
           estimateStatus={estimateStatus}
+          repairEstimate={repair.repair_estimate_by_company}
         />
 
         <Box sx={{ my: 4 }}>
@@ -214,14 +228,6 @@ export default async function RepairStatusPage({
                     />
                   </Box>
                 </ListItem>
-                {repair.company && (
-                  <ListItem>
-                    <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
-                      Company
-                    </Typography>
-                    <Typography variant="body1">{repair.company}</Typography>
-                  </ListItem>
-                )}
               </List>
             </ContentCard>
           </Grid>
@@ -241,7 +247,15 @@ export default async function RepairStatusPage({
                   </Typography>
                   <Typography variant="body1">{repair.model_item_name}</Typography>
                 </ListItem>
-                {inferDeviceFormat(repair) === 'kit' ? (
+                {repair.company && (
+                  <ListItem>
+                    <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
+                      Company
+                    </Typography>
+                    <Typography variant="body1">{repair.company}</Typography>
+                  </ListItem>
+                )}
+                {hasDualSerialIntake(inferDeviceFormat(repair), repair.ear) ? (
                   <>
                     <ListItem>
                       <Typography variant="body2" color="text.secondary" sx={{ width: 120 }}>
@@ -341,7 +355,11 @@ export default async function RepairStatusPage({
                         </Typography>
                         {estimateStatus !== 'Not Required' && (
                           <Chip 
-                            label={estimateStatus} 
+                            label={
+                              estimateStatus === 'Approved' && repair.estimate_approved_by === 'staff'
+                                ? getEstimateApprovalLabel('staff')
+                                : estimateStatus
+                            }
                             size="small"
                             color={
                               estimateStatus === 'Approved' ? 'success' :

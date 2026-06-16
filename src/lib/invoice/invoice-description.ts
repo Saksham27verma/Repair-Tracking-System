@@ -2,6 +2,7 @@ import {
   formatEarLabel,
   formatSerialNumbers,
   getDeviceFormatLabel,
+  hasDualSerialIntake,
   inferDeviceFormat,
 } from '@/lib/device-format';
 import type { RepairRecord } from '@/app/types/database';
@@ -15,7 +16,7 @@ export function buildLineItemDescription(
 ): string {
   const format = inferDeviceFormat(repair);
   const serialInfo =
-    format === 'kit' && repair.serial_no_2
+    hasDualSerialIntake(format, repair.ear) && repair.serial_no_2
       ? `Left: ${repair.serial_no}, Right: ${repair.serial_no_2}`
       : formatSerialNumbers(repair);
   const earInfo = formatEarLabel(repair.ear, format);

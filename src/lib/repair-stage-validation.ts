@@ -1,5 +1,6 @@
 import { MovementType, PaymentMode, RepairRecord, RepairStatus, WarrantyAfterRepair } from '@/app/types/database';
 import { calculateTaxFromInclusive } from '@/lib/invoice-tax';
+import { isEstimateResolved, requiresPatientEstimate } from '@/lib/estimate-approval';
 
 type StageValidationField =
   | 'patient_name'
@@ -17,7 +18,8 @@ type StageValidationField =
   | 'pickup_center_id'
   | 'customer_paid'
   | 'payment_mode'
-  | 'date_out_to_customer';
+  | 'date_out_to_customer'
+  | 'estimate_approval';
 
 type StageValidationInput = Partial<RepairRecord> & {
   receiving_center_id?: string;
@@ -51,6 +53,7 @@ const FIELD_LABELS: Record<StageValidationField, string> = {
   customer_paid: 'Amount Customer Paid',
   payment_mode: 'Payment Mode',
   date_out_to_customer: 'Completion Date',
+  estimate_approval: 'Patient Estimate Approval',
 };
 
 const REQUIREMENT_CHECKS: Record<StageValidationField, RequirementFn> = {
@@ -88,6 +91,8 @@ const REQUIREMENT_CHECKS: Record<StageValidationField, RequirementFn> = {
   },
   payment_mode: (repair) => !repair.payment_mode,
   date_out_to_customer: (repair) => !repair.date_out_to_customer,
+  estimate_approval: (repair) =>
+    requiresPatientEstimate(repair) && !isEstimateResolved(repair),
 };
 
 export const STATUS_REQUIRED_FIELDS: Record<RepairStatus, StageValidationField[]> = {
@@ -138,6 +143,7 @@ export const STATUS_REQUIRED_FIELDS: Record<RepairStatus, StageValidationField[]
     'manufacturer_invoice_total',
     'warranty_after_repair',
     'pickup_center_id',
+    'estimate_approval',
   ],
   Completed: [
     'patient_name',
@@ -156,6 +162,7 @@ export const STATUS_REQUIRED_FIELDS: Record<RepairStatus, StageValidationField[]
     'customer_paid',
     'payment_mode',
     'date_out_to_customer',
+    'estimate_approval',
   ],
 };
 
@@ -168,6 +175,7 @@ export const MOVEMENT_TO_STATUS: Partial<Record<MovementType, RepairStatus>> = {
 
 /** Fields users should fill inline at each stage transition */
 export const TRANSITION_INPUT_FIELDS: Partial<Record<RepairStatus, StageValidationField[]>> = {
+  'Sent to Company for Repair': ['date_out_to_manufacturer'],
   'Returned from Manufacturer': [
     'manufacturer_invoice_number',
     'manufacturer_invoice_date',
@@ -175,10 +183,45 @@ export const TRANSITION_INPUT_FIELDS: Partial<Record<RepairStatus, StageValidati
     'warranty_after_repair',
   ],
   'Ready for Pickup': ['pickup_center_id'],
-  Completed: ['customer_paid', 'payment_mode'],
+  Completed: ['customer_paid', 'payment_mode', 'date_out_to_customer'],
 };
 
+/** Extra blocking checks at specific transitions (already captured on earlier steps) */
+const TRANSITION_BLOCKING_FIELDS: Partial<Record<RepairStatus, StageValidationField[]>> = {
+  'Ready for Pickup': ['estimate_approval'],
+  Completed: ['estimate_approval'],
+};
+
+type TransitionValueKey = keyof TransitionFieldValues;
+
+/** Which form values may be written when logging a movement to each status */
+const TRANSITION_VALUE_KEYS: Partial<Record<RepairStatus, TransitionValueKey[]>> = {
+  'Sent to Company for Repair': ['date_out_to_manufacturer'],
+  'Returned from Manufacturer': [
+    'manufacturer_invoice_number',
+    'manufacturer_invoice_date',
+    'manufacturer_invoice_total',
+    'manufacturer_invoice_gst_rate',
+    'manufacturer_invoice_is_foc',
+    'warranty_after_repair',
+    'hope_markup',
+  ],
+  'Ready for Pickup': ['pickup_center_id'],
+  Completed: ['customer_paid', 'payment_mode', 'date_out_to_customer'],
+};
+
+function shouldApplyTransitionValue(
+  key: TransitionValueKey,
+  targetStatus?: RepairStatus
+): boolean {
+  if (!targetStatus) return true;
+  const allowed = TRANSITION_VALUE_KEYS[targetStatus];
+  return allowed ? allowed.includes(key) : true;
+}
+
 export interface TransitionFieldValues {
+  date_out_to_manufacturer?: string | null;
+  date_out_to_customer?: string | null;
   manufacturer_invoice_number?: string;
   manufacturer_invoice_date?: string | null;
   manufacturer_invoice_total?: number | null;
@@ -208,17 +251,39 @@ export function getCustomerQuoteFromTransition(values: TransitionFieldValues): n
 }
 
 export function buildRepairUpdatesFromTransition(
-  values: TransitionFieldValues
+  values: TransitionFieldValues,
+  targetStatus?: RepairStatus
 ): Record<string, unknown> {
   const updates: Record<string, unknown> = {};
 
-  if (values.manufacturer_invoice_number !== undefined) {
+  if (
+    shouldApplyTransitionValue('date_out_to_manufacturer', targetStatus) &&
+    values.date_out_to_manufacturer !== undefined
+  ) {
+    updates.date_out_to_manufacturer = values.date_out_to_manufacturer || null;
+  }
+  if (
+    shouldApplyTransitionValue('date_out_to_customer', targetStatus) &&
+    values.date_out_to_customer !== undefined
+  ) {
+    updates.date_out_to_customer = values.date_out_to_customer || null;
+  }
+  if (
+    shouldApplyTransitionValue('manufacturer_invoice_number', targetStatus) &&
+    values.manufacturer_invoice_number !== undefined
+  ) {
     updates.manufacturer_invoice_number = values.manufacturer_invoice_number || null;
   }
-  if (values.manufacturer_invoice_date !== undefined) {
+  if (
+    shouldApplyTransitionValue('manufacturer_invoice_date', targetStatus) &&
+    values.manufacturer_invoice_date !== undefined
+  ) {
     updates.manufacturer_invoice_date = values.manufacturer_invoice_date || null;
   }
-  if (values.manufacturer_invoice_total !== undefined) {
+  if (
+    shouldApplyTransitionValue('manufacturer_invoice_total', targetStatus) &&
+    values.manufacturer_invoice_total !== undefined
+  ) {
     const total =
       values.manufacturer_invoice_total != null && `${values.manufacturer_invoice_total}` !== ''
         ? Number(values.manufacturer_invoice_total)
@@ -244,13 +309,20 @@ export function buildRepairUpdatesFromTransition(
       }
     }
   }
-  if (values.manufacturer_invoice_is_foc !== undefined && values.manufacturer_invoice_total === undefined) {
+  if (
+    shouldApplyTransitionValue('manufacturer_invoice_is_foc', targetStatus) &&
+    values.manufacturer_invoice_is_foc !== undefined &&
+    values.manufacturer_invoice_total === undefined
+  ) {
     updates.manufacturer_invoice_is_foc = values.manufacturer_invoice_is_foc;
   }
-  if (values.warranty_after_repair !== undefined) {
+  if (
+    shouldApplyTransitionValue('warranty_after_repair', targetStatus) &&
+    values.warranty_after_repair !== undefined
+  ) {
     updates.warranty_after_repair = values.warranty_after_repair || null;
   }
-  if (values.hope_markup !== undefined) {
+  if (shouldApplyTransitionValue('hope_markup', targetStatus) && values.hope_markup !== undefined) {
     const markup =
       values.hope_markup != null && `${values.hope_markup}` !== ''
         ? Number(values.hope_markup)
@@ -265,16 +337,16 @@ export function buildRepairUpdatesFromTransition(
       updates.estimate_status = 'Not Required';
     }
   }
-  if (values.customer_paid !== undefined) {
+  if (shouldApplyTransitionValue('customer_paid', targetStatus) && values.customer_paid !== undefined) {
     updates.customer_paid =
       values.customer_paid != null && `${values.customer_paid}` !== ''
         ? Number(values.customer_paid)
         : null;
   }
-  if (values.payment_mode !== undefined) {
+  if (shouldApplyTransitionValue('payment_mode', targetStatus) && values.payment_mode !== undefined) {
     updates.payment_mode = values.payment_mode || null;
   }
-  if (values.pickup_center_id !== undefined) {
+  if (shouldApplyTransitionValue('pickup_center_id', targetStatus) && values.pickup_center_id !== undefined) {
     updates.pickup_center_id = values.pickup_center_id || null;
   }
 
@@ -308,12 +380,28 @@ export function validateTransitionFields(
   values: TransitionFieldValues,
   baseRepair: StageValidationInput = {}
 ): StageValidationResult {
-  const updates = buildRepairUpdatesFromTransition(values);
-  return validateRepairForStatus(targetStatus, {
+  const fieldsToCheck = [
+    ...getTransitionFieldsForStatus(targetStatus),
+    ...(TRANSITION_BLOCKING_FIELDS[targetStatus] || []),
+  ];
+  const updates = buildRepairUpdatesFromTransition(values, targetStatus);
+  const mergedRepair: StageValidationInput = {
     ...baseRepair,
     ...updates,
     status: targetStatus,
-  });
+  };
+  const missingFields = fieldsToCheck.filter((field) => REQUIREMENT_CHECKS[field](mergedRepair));
+  const missingLabels = missingFields.map((field) => FIELD_LABELS[field]);
+
+  return {
+    isValid: missingFields.length === 0,
+    missingFields,
+    missingLabels,
+    message:
+      missingLabels.length > 0
+        ? `Complete required fields for ${targetStatus}: ${missingLabels.join(', ')}.`
+        : null,
+  };
 }
 
 export function validateRepairForStatus(

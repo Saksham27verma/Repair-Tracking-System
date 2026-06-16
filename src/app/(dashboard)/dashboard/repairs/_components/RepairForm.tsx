@@ -69,7 +69,7 @@ import {
   ReceivingCenter,
   DeviceFormat,
 } from '@/app/types/database';
-import { inferDeviceFormat } from '@/lib/device-format';
+import { computeRepairQuantity, hasDualSerialIntake, inferDeviceFormat } from '@/lib/device-format';
 import { calculateTaxFromInclusive, formatCurrency, GST_RATE_OPTIONS } from '@/lib/invoice-tax';
 import { getCustomerVisitStats, getCustomerVisitStatsByPhone, type CustomerVisitStats } from '@/lib/customer-visits';
 import {
@@ -80,6 +80,7 @@ import {
   buildRepairUpdatesFromTransition,
   type TransitionFieldValues,
 } from '@/lib/repair-stage-validation';
+import { getEstimateApprovalLabel } from '@/lib/estimate-approval';
 import ManufacturerInvoiceFocConfirm, {
   isExplicitZeroInvoiceTotal,
 } from '@/app/components/ManufacturerInvoiceFocConfirm';
@@ -307,10 +308,9 @@ function isDeviceSectionValid(
   const hasPurpose = isCustomPurpose
     ? Boolean(customPurpose?.trim())
     : Boolean(formData.purpose?.trim());
-  const hasSerial =
-    formData.device_format === 'kit'
-      ? Boolean(formData.serial_no?.trim()) && Boolean(formData.serial_no_2?.trim())
-      : Boolean(formData.serial_no?.trim());
+  const hasSerial = hasDualSerialIntake(formData.device_format, formData.ear)
+    ? Boolean(formData.serial_no?.trim()) && Boolean(formData.serial_no_2?.trim())
+    : Boolean(formData.serial_no?.trim());
   return (
     Boolean(formData.model_item_name?.trim()) &&
     hasSerial &&
@@ -342,7 +342,7 @@ interface RepairVisitTab {
   seenSections: boolean[];
 }
 
-type CustomerFields = Pick<FormState, 'patient_name' | 'phone' | 'email' | 'company'>;
+type CustomerFields = Pick<FormState, 'patient_name' | 'phone' | 'email'>;
 
 function createNewVisitTab(
   savedEmail: string,
@@ -357,7 +357,7 @@ function createNewVisitTab(
       email: customer?.email || customerFields?.email || savedEmail,
       patient_name: customer?.name || customerFields?.patient_name || '',
       phone: customer?.phone || customerFields?.phone || '',
-      company: (customer?.company as CompanyType) || customerFields?.company || '',
+      company: (customer?.company as CompanyType) || '',
     },
     customPurpose: '',
     isCustomPurpose: false,
@@ -380,7 +380,6 @@ function syncCustomerFields(formData: FormState, fields: CustomerFields): FormSt
     patient_name: fields.patient_name,
     phone: fields.phone,
     email: fields.email,
-    company: fields.company,
   };
 }
 
@@ -405,9 +404,11 @@ function buildRepairDbData(tabFormData: FormState, customerId: string) {
       company: tabFormData.company || null,
       model_item_name: tabFormData.model_item_name,
       serial_no: tabFormData.serial_no,
-      serial_no_2: tabFormData.device_format === 'kit' ? tabFormData.serial_no_2 : null,
+      serial_no_2: hasDualSerialIntake(tabFormData.device_format, tabFormData.ear)
+        ? tabFormData.serial_no_2
+        : null,
       device_format: tabFormData.device_format,
-      quantity: tabFormData.device_format === 'kit' ? 2 : 1,
+      quantity: computeRepairQuantity(tabFormData.device_format, tabFormData.ear),
       warranty: tabFormData.warranty,
       purpose: tabFormData.purpose,
       repair_estimate_by_company: customerQuote > 0 ? customerQuote : null,
@@ -524,7 +525,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
         serial_no: repair.serial_no,
         serial_no_2: repair.serial_no_2 || '',
         device_format: inferDeviceFormat(repair),
-        quantity: inferDeviceFormat(repair) === 'kit' ? 2 : 1,
+        quantity: computeRepairQuantity(inferDeviceFormat(repair), repair.ear),
         warranty: repair.warranty,
         purpose: repair.purpose,
         hope_markup: repair.estimate_by_us ?? (
@@ -596,10 +597,12 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
       patient_name: prefillCustomer.name,
       phone: prefillCustomer.phone,
       email: prefillCustomer.email || '',
-      company: (prefillCustomer.company as CompanyType) || '',
     };
 
-    setFormData((prev) => syncCustomerFields(prev, fields));
+    setFormData((prev) => ({
+      ...syncCustomerFields(prev, fields),
+      company: (prefillCustomer.company as CompanyType) || prev.company,
+    }));
     syncCustomerToAllTabs(fields);
   }, [prefillCustomer, mode, syncCustomerToAllTabs]);
 
@@ -731,7 +734,6 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
       patient_name: formData.patient_name,
       phone: formData.phone,
       email: formData.email,
-      company: formData.company,
     };
 
     setVisitTabs((prev) => {
@@ -828,6 +830,8 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
 
   const transitionFieldValues = useMemo<TransitionFieldValues>(
     () => ({
+      date_out_to_manufacturer: formData.date_out_to_manufacturer,
+      date_out_to_customer: formData.date_out_to_customer,
       manufacturer_invoice_number: formData.manufacturer_invoice_number,
       manufacturer_invoice_date: formData.manufacturer_invoice_date,
       manufacturer_invoice_total: formData.manufacturer_invoice_total,
@@ -868,6 +872,14 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
           ? (values.payment_mode as PaymentMode | null)
           : prev.payment_mode,
       pickup_center_id: values.pickup_center_id ?? prev.pickup_center_id,
+      date_out_to_manufacturer:
+        values.date_out_to_manufacturer !== undefined
+          ? values.date_out_to_manufacturer
+          : prev.date_out_to_manufacturer,
+      date_out_to_customer:
+        values.date_out_to_customer !== undefined
+          ? values.date_out_to_customer
+          : prev.date_out_to_customer,
     }));
     Object.keys(values).forEach((key) => clearFieldError(key));
   }, [clearFieldError]);
@@ -920,13 +932,12 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
       const next = { ...prev, [name]: value };
       if (
         mode === 'create' &&
-        (name === 'patient_name' || name === 'phone' || name === 'email' || name === 'company')
+        (name === 'patient_name' || name === 'phone' || name === 'email')
       ) {
         syncCustomerToAllTabs({
           patient_name: name === 'patient_name' ? value : next.patient_name,
           phone: name === 'phone' ? value : next.phone,
           email: name === 'email' ? value : next.email,
-          company: name === 'company' ? (value as CompanyType | '') : next.company,
         });
       }
       return next;
@@ -1023,12 +1034,24 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
   };
 
   const handleDeviceFormatChange = (format: DeviceFormat) => {
+    setFormData((prev) => {
+      const ear = format === 'kit' ? 'both' : prev.ear === 'both' ? null : prev.ear;
+      return {
+        ...prev,
+        device_format: format,
+        quantity: computeRepairQuantity(format, ear),
+        serial_no_2: hasDualSerialIntake(format, ear) ? prev.serial_no_2 : '',
+        ear,
+      };
+    });
+  };
+
+  const handleEarChange = (ear: EarType) => {
     setFormData((prev) => ({
       ...prev,
-      device_format: format,
-      quantity: format === 'kit' ? 2 : 1,
-      serial_no_2: format === 'piece' ? '' : prev.serial_no_2,
-      ear: format === 'kit' ? 'both' : prev.ear === 'both' ? null : prev.ear,
+      ear,
+      quantity: computeRepairQuantity(prev.device_format, ear),
+      serial_no_2: hasDualSerialIntake(prev.device_format, ear) ? prev.serial_no_2 : '',
     }));
   };
 
@@ -1188,8 +1211,11 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
         throw new Error(`Required fields missing: ${missingFields.join(', ')}`);
       }
 
-      if (formData.device_format === 'kit' && !formData.serial_no_2?.trim()) {
-        throw new Error('Right ear serial number is required for a pair kit');
+      if (
+        hasDualSerialIntake(formData.device_format, formData.ear) &&
+        !formData.serial_no_2?.trim()
+      ) {
+        throw new Error('Right ear serial number is required when both ears are included');
       }
 
       const targetStatus: RepairStatus = mode === 'edit' ? formData.status : 'Received';
@@ -1343,9 +1369,11 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
           company: formData.company || null,
           model_item_name: formData.model_item_name,
           serial_no: formData.serial_no,
-          serial_no_2: formData.device_format === 'kit' ? formData.serial_no_2 : null,
+          serial_no_2: hasDualSerialIntake(formData.device_format, formData.ear)
+            ? formData.serial_no_2
+            : null,
           device_format: formData.device_format,
-          quantity: formData.device_format === 'kit' ? 2 : 1,
+          quantity: computeRepairQuantity(formData.device_format, formData.ear),
           warranty: formData.warranty,
           purpose: formData.purpose,
           repair_estimate_by_company: customerQuote > 0 ? customerQuote : null,
@@ -1998,41 +2026,6 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   onChange={handleChange}
                 />
               </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  select
-                  label="Company"
-                  name="company"
-                  value={formData.company || ''}
-                  onChange={(e) => {
-                    const company = e.target.value as CompanyType | '';
-                    setFormData((prev) => {
-                      const next = { ...prev, company };
-                      if (mode === 'create') {
-                        syncCustomerToAllTabs({
-                          patient_name: next.patient_name,
-                          phone: next.phone,
-                          email: next.email,
-                          company,
-                        });
-                      }
-                      return next;
-                    });
-                  }}
-                >
-                  <MenuItem value="">None</MenuItem>
-                  <MenuItem value="Signia">Signia</MenuItem>
-                  <MenuItem value="Phonak">Phonak</MenuItem>
-                  <MenuItem value="Widex">Widex</MenuItem>
-                  <MenuItem value="Starkey">Starkey</MenuItem>
-                  <MenuItem value="GNResound">GNResound</MenuItem>
-                  <MenuItem value="Unitron">Unitron</MenuItem>
-                  <MenuItem value="Oticon">Oticon</MenuItem>
-                  <MenuItem value="Siemens">Siemens</MenuItem>
-                  <MenuItem value="Others">Others</MenuItem>
-                </TextField>
-              </Grid>
             </Grid>
           </Box>
 
@@ -2195,7 +2188,55 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   }}
                 />
               </Grid>
-              {formData.device_format === 'kit' ? (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  select
+                  label="Company"
+                  name="company"
+                  value={formData.company || ''}
+                  onChange={(e) => {
+                    const company = e.target.value as CompanyType | '';
+                    setFormData((prev) => ({ ...prev, company }));
+                  }}
+                >
+                  <MenuItem value="">None</MenuItem>
+                  <MenuItem value="Signia">Signia</MenuItem>
+                  <MenuItem value="Phonak">Phonak</MenuItem>
+                  <MenuItem value="Widex">Widex</MenuItem>
+                  <MenuItem value="Starkey">Starkey</MenuItem>
+                  <MenuItem value="GNResound">GNResound</MenuItem>
+                  <MenuItem value="Unitron">Unitron</MenuItem>
+                  <MenuItem value="Oticon">Oticon</MenuItem>
+                  <MenuItem value="Siemens">Siemens</MenuItem>
+                  <MenuItem value="Others">Others</MenuItem>
+                </TextField>
+              </Grid>
+              {formData.device_format === 'piece' ? (
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <FormLabel id="ear-label">Ear</FormLabel>
+                    <RadioGroup
+                      aria-labelledby="ear-label"
+                      name="ear"
+                      value={formData.ear || ''}
+                      onChange={(e) => handleEarChange(e.target.value as EarType)}
+                      row
+                    >
+                      <FormControlLabel value="left" control={<Radio />} label="Left" />
+                      <FormControlLabel value="right" control={<Radio />} label="Right" />
+                      <FormControlLabel value="both" control={<Radio />} label="Both (2 separate pieces)" />
+                    </RadioGroup>
+                  </FormControl>
+                </Grid>
+              ) : (
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="text.secondary">
+                    Pair kit includes both left and right devices (quantity: 2).
+                  </Typography>
+                </Grid>
+              )}
+              {hasDualSerialIntake(formData.device_format, formData.ear) ? (
                 <>
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -2276,30 +2317,6 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                     multiline
                     rows={3}
                   />
-                </Grid>
-              )}
-              {formData.device_format === 'piece' ? (
-                <Grid item xs={12} md={4}>
-                  <FormControl fullWidth>
-                    <FormLabel id="ear-label">Ear</FormLabel>
-                    <RadioGroup
-                      aria-labelledby="ear-label"
-                      name="ear"
-                      value={formData.ear || ''}
-                      onChange={(e) => setFormData(prev => ({ ...prev, ear: e.target.value as EarType }))}
-                      row
-                    >
-                      <FormControlLabel value="left" control={<Radio />} label="Left" />
-                      <FormControlLabel value="right" control={<Radio />} label="Right" />
-                      <FormControlLabel value="both" control={<Radio />} label="Both" />
-                    </RadioGroup>
-                  </FormControl>
-                </Grid>
-              ) : (
-                <Grid item xs={12} md={4}>
-                  <Typography variant="body2" color="text.secondary" sx={{ pt: 1 }}>
-                    Pair kit includes both left and right devices.
-                  </Typography>
                 </Grid>
               )}
               <Grid item xs={12} md={6}>
@@ -2666,19 +2683,29 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
               </Grid>
               {customerQuote > 0 && (
                 <Grid item xs={12} sm={4}>
-                  <TextField
-                    fullWidth
-                    select
-                    label="Quote Status"
-                    name="estimate_status"
-                    value={formData.estimate_status || 'Pending'}
-                    onChange={handleChange}
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 2,
+                      bgcolor: '#F8FAFC',
+                      border: '1px solid #E2E8F0',
+                      height: '100%',
+                    }}
                   >
-                    <MenuItem value="Pending">Pending Approval</MenuItem>
-                    <MenuItem value="Approved">Approved</MenuItem>
-                    <MenuItem value="Declined">Declined</MenuItem>
-                    <MenuItem value="Not Required">Not Required</MenuItem>
-                  </TextField>
+                    <Typography variant="caption" color="text.secondary" fontWeight={600} display="block">
+                      Quote Status
+                    </Typography>
+                    <Typography variant="body2" fontWeight={700} sx={{ mt: 0.5 }}>
+                      {formData.estimate_status === 'Approved' && repair?.estimate_approved_by
+                        ? getEstimateApprovalLabel(repair.estimate_approved_by)
+                        : formData.estimate_status || 'Pending'}
+                    </Typography>
+                    {mode === 'edit' && formData.estimate_status === 'Pending' && (
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                        Approve from the repair detail page (patient portal or phone confirmation).
+                      </Typography>
+                    )}
+                  </Box>
                 </Grid>
               )}
             </Grid>

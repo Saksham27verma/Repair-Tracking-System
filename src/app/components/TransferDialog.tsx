@@ -36,6 +36,7 @@ import {
   validateTransitionFields,
   mapStageFieldErrors,
 } from '@/lib/repair-stage-validation';
+import { isEstimateApprovalPending } from '@/lib/estimate-approval';
 
 interface TransferDialogProps {
   open: boolean;
@@ -101,6 +102,8 @@ function buildInitialTransitionValues(repair?: Partial<RepairRecord>): Transitio
       : null);
 
   return {
+    date_out_to_manufacturer: repair?.date_out_to_manufacturer || new Date().toISOString(),
+    date_out_to_customer: repair?.date_out_to_customer || new Date().toISOString(),
     manufacturer_invoice_number: repair?.manufacturer_invoice_number || '',
     manufacturer_invoice_date: repair?.manufacturer_invoice_date || null,
     manufacturer_invoice_total: repair?.manufacturer_invoice_total ?? null,
@@ -173,6 +176,13 @@ export default function TransferDialog({
   const selectedOption = MOVEMENT_OPTIONS.find((o) => o.value === movementType);
   const showShipmentFields =
     movementType === 'center_transfer' || movementType === 'sent_to_manufacturer';
+  const estimateBlocked = isEstimateApprovalPending({
+    repair_estimate_by_company: repair?.repair_estimate_by_company,
+    estimate_status: repair?.estimate_status,
+  });
+  const movementBlockedByEstimate =
+    estimateBlocked &&
+    (movementType === 'ready_for_pickup' || movementType === 'delivered');
 
   const handleSubmit = async () => {
     setError('');
@@ -194,6 +204,13 @@ export default function TransferDialog({
         return;
       }
 
+      const destinationCenterId = selectedOption.needsCenter ? toCenterId : '';
+      const validationCenterId =
+        destinationCenterId ||
+        repair?.current_center_id ||
+        currentCenterId ||
+        effectiveCenterId;
+
       const transitionPayload: TransitionFieldValues = {
         ...transitionValues,
         ...(movementType === 'ready_for_pickup' && toCenterId
@@ -204,12 +221,17 @@ export default function TransferDialog({
       if (targetStatus) {
         const validation = validateTransitionFields(targetStatus, transitionPayload, {
           ...repair,
-          current_center_id: repair?.current_center_id || currentCenterId,
-          receiving_center_id: repair?.current_center_id || currentCenterId,
+          current_center_id: validationCenterId,
+          receiving_center_id: validationCenterId,
         });
 
         if (!validation.isValid) {
-          setFieldErrors(mapStageFieldErrors(validation, transitionPayload));
+          const nextFieldErrors = mapStageFieldErrors(validation, transitionPayload);
+          if (nextFieldErrors.receiving_center_id && selectedOption.needsCenter) {
+            nextFieldErrors.to_center_id = nextFieldErrors.receiving_center_id;
+            delete nextFieldErrors.receiving_center_id;
+          }
+          setFieldErrors(nextFieldErrors);
           setError(validation.message || 'Complete the required fields for this step.');
           setLoading(false);
           return;
@@ -217,6 +239,10 @@ export default function TransferDialog({
       }
 
       const now = new Date().toISOString();
+      const sentToManufacturerDate =
+        movementType === 'sent_to_manufacturer'
+          ? transitionPayload.date_out_to_manufacturer || now
+          : undefined;
       const isShipped =
         movementType === 'sent_to_manufacturer' ||
         (movementType === 'center_transfer' && (carrier || trackingNumber));
@@ -248,14 +274,14 @@ export default function TransferDialog({
         tracking_number: trackingNumber || undefined,
         expected_arrival: expectedArrival ? new Date(expectedArrival).toISOString() : undefined,
         notes: notes || undefined,
-        shipped_at: isShipped ? now : undefined,
+        shipped_at: isShipped ? sentToManufacturerDate || now : undefined,
         received_at:
           isReceived
             ? now
             : movementType === 'center_transfer' && !carrier && !trackingNumber
               ? now
               : undefined,
-        repair_updates: buildRepairUpdatesFromTransition(transitionPayload),
+        repair_updates: buildRepairUpdatesFromTransition(transitionPayload, targetStatus),
       };
 
       const res = await fetch(`/api/repairs/${repairId}/movements`, {
@@ -323,6 +349,14 @@ export default function TransferDialog({
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
+        {movementBlockedByEstimate && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            The patient must approve or decline the repair estimate before you can mark this device
+            ready for pickup or delivered. Use the estimate approval section on the repair detail page
+            if the patient confirmed by phone.
+          </Alert>
+        )}
+
         {availableOptions.length === 0 ? (
           <Alert severity="info">
             No further movements can be logged — this repair journey is complete.
@@ -363,8 +397,8 @@ export default function TransferDialog({
                   value={toCenterId}
                   onChange={setToCenterId}
                   required
-                  error={Boolean(fieldErrors.pickup_center_id)}
-                  helperText={fieldErrors.pickup_center_id}
+                  error={Boolean(fieldErrors.pickup_center_id || fieldErrors.to_center_id)}
+                  helperText={fieldErrors.pickup_center_id || fieldErrors.to_center_id}
                 />
               </Grid>
             )}
@@ -380,6 +414,7 @@ export default function TransferDialog({
                   }}
                   errors={fieldErrors}
                   hidePickupCenter={movementType === 'ready_for_pickup'}
+                  customerQuoteOverride={repair?.repair_estimate_by_company}
                 />
               </Grid>
             )}
@@ -439,7 +474,7 @@ export default function TransferDialog({
         <Button
           variant="contained"
           onClick={handleSubmit}
-          disabled={loading || availableOptions.length === 0}
+          disabled={loading || availableOptions.length === 0 || movementBlockedByEstimate}
         >
           {loading ? <CircularProgress size={20} /> : 'Log Movement'}
         </Button>

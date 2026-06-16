@@ -29,6 +29,7 @@ import {
 } from '@/lib/repair-stage-validation';
 
 const STATUS_HEADINGS: Partial<Record<RepairStatus, string>> = {
+  'Sent to Company for Repair': 'Dispatch to manufacturer',
   'Returned from Manufacturer': 'Manufacturer return — complete financials',
   'Ready for Pickup': 'Pickup & customer quote',
   Completed: 'Confirm payment from customer',
@@ -41,6 +42,8 @@ interface StageTransitionFieldsProps {
   errors?: Record<string, string>;
   /** In movement dialog, pickup center is chosen separately */
   hidePickupCenter?: boolean;
+  /** Use saved repair quote when transition values have not been reloaded yet */
+  customerQuoteOverride?: number | null;
 }
 
 function FinancialSummary({
@@ -100,6 +103,7 @@ export default function StageTransitionFields({
   onChange,
   errors = {},
   hidePickupCenter = false,
+  customerQuoteOverride,
 }: StageTransitionFieldsProps) {
   const fields = getTransitionFieldsForStatus(targetStatus);
   if (fields.length === 0) return null;
@@ -114,7 +118,11 @@ export default function StageTransitionFields({
   const invoiceTotal = Number(values.manufacturer_invoice_total) || 0;
   const markup = Number(values.hope_markup) || 0;
   const gstRate = Number(values.manufacturer_invoice_gst_rate) || 18;
-  const customerQuote = useMemo(() => getCustomerQuoteFromTransition(values), [values]);
+  const customerQuote = useMemo(() => {
+    const derived = getCustomerQuoteFromTransition(values);
+    if (derived > 0) return derived;
+    return Number(customerQuoteOverride) > 0 ? Number(customerQuoteOverride) : 0;
+  }, [values, customerQuoteOverride]);
 
   const invoiceTaxBreakdown = useMemo(
     () => calculateTaxFromInclusive(invoiceTotal, gstRate),
@@ -152,6 +160,64 @@ export default function StageTransitionFields({
       )}
 
       <Grid container spacing={2}>
+        {fields.includes('date_out_to_manufacturer') && (
+          <Grid item xs={12} sm={6}>
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <DatePicker
+                label="Date Sent to Manufacturer"
+                value={
+                  values.date_out_to_manufacturer
+                    ? dayjs(values.date_out_to_manufacturer)
+                    : null
+                }
+                onChange={(date: Dayjs | null) =>
+                  setField(
+                    'date_out_to_manufacturer',
+                    date?.isValid() ? date.toISOString() : null
+                  )
+                }
+                slotProps={{
+                  textField: {
+                    fullWidth: true,
+                    size: 'small',
+                    required: true,
+                    error: Boolean(errors.date_out_to_manufacturer),
+                    helperText: errors.date_out_to_manufacturer,
+                  },
+                }}
+              />
+            </LocalizationProvider>
+          </Grid>
+        )}
+
+        {fields.includes('date_out_to_customer') && (
+          <Grid item xs={12} sm={6}>
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <DatePicker
+                label="Completion Date"
+                value={
+                  values.date_out_to_customer ? dayjs(values.date_out_to_customer) : null
+                }
+                onChange={(date: Dayjs | null) =>
+                  setField(
+                    'date_out_to_customer',
+                    date?.isValid() ? date.toISOString() : null
+                  )
+                }
+                slotProps={{
+                  textField: {
+                    fullWidth: true,
+                    size: 'small',
+                    required: true,
+                    error: Boolean(errors.date_out_to_customer),
+                    helperText: errors.date_out_to_customer,
+                  },
+                }}
+              />
+            </LocalizationProvider>
+          </Grid>
+        )}
+
         {showFullFinancialFlow && (
           <>
             <Grid item xs={12}>

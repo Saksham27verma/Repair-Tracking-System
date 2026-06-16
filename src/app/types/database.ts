@@ -11,6 +11,9 @@ export type EstimateStatus =
   | 'Declined' 
   | 'Not Required';
 
+/** Who confirmed the repair estimate — patient on the portal, or staff after phone confirmation */
+export type EstimateApprovedBy = 'patient' | 'staff';
+
 export type WarrantyStatus = '2 years warranty' | '3 years warranty' | '4 years warranty' | 'Out of warranty';
 
 export type WarrantyAfterRepair = '6 months' | '1 year' | 'None';
@@ -459,6 +462,7 @@ export interface RepairRecord {
   // Estimate Approval
   estimate_status?: EstimateStatus;
   estimate_approval_date?: string;
+  estimate_approved_by?: EstimateApprovedBy;
   
   // Additional Information
   programming_done?: boolean;

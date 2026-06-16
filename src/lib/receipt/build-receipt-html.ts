@@ -2,6 +2,7 @@ import {
   formatEarLabel,
   formatSerialNumbers,
   getDeviceFormatLabel,
+  hasDualSerialIntake,
   inferDeviceFormat,
 } from '@/lib/device-format';
 import type { RepairRecord, Center } from '@/app/types/database';
@@ -46,7 +47,7 @@ function replaceAll(template: string, replacements: Record<string, string>): str
 function buildDeviceRows(repair: BuildReceiptHtmlInput['repair']): string {
   const format = inferDeviceFormat(repair);
 
-  if (format === 'kit' && repair.serial_no_2) {
+  if (hasDualSerialIntake(format, repair.ear) && repair.serial_no_2) {
     return `
       <tr>
         <td>

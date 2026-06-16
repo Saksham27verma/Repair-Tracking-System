@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Alert, Box, Button } from '@mui/material';
 import { supabase } from '@/lib/supabase';
@@ -68,37 +68,27 @@ export default function RepairDetailPageContent({
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadRepair = useCallback(async () => {
+    setLoading(true);
+    setNotFound(false);
 
-    async function loadRepair() {
-      setLoading(true);
-      setNotFound(false);
-
-      const repairData = await fetchRepair(repairId);
-      if (cancelled) return;
-
-      if (!repairData) {
-        setRepair(null);
-        setNotFound(true);
-        setLoading(false);
-        return;
-      }
-
-      const stats = await fetchCustomerVisitStats(repairData.customer_id);
-      if (cancelled) return;
-
-      setRepair(repairData);
-      setVisitStats(stats);
+    const repairData = await fetchRepair(repairId);
+    if (!repairData) {
+      setRepair(null);
+      setNotFound(true);
       setLoading(false);
+      return;
     }
 
-    loadRepair();
-
-    return () => {
-      cancelled = true;
-    };
+    const stats = await fetchCustomerVisitStats(repairData.customer_id);
+    setRepair(repairData);
+    setVisitStats(stats);
+    setLoading(false);
   }, [repairId]);
+
+  useEffect(() => {
+    loadRepair();
+  }, [loadRepair]);
 
   if (loading) {
     return <LoadingSpinner />;
@@ -140,6 +130,7 @@ export default function RepairDetailPageContent({
         repair={repair}
         estimateStatus={estimateStatus}
         visitStats={visitStats}
+        onRepairRefresh={loadRepair}
       />
     </PageShell>
   );

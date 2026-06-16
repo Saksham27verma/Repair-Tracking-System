@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
-import { EstimateStatus } from '@/app/types/database';
+import { EstimateStatus, EstimateApprovedBy } from '@/app/types/database';
 import { getFreshSupabaseClient, refreshSchemaCache } from '@/lib/supabase';
 import { validateRepairForStatus } from '@/lib/repair-stage-validation';
 
@@ -14,8 +14,8 @@ export async function POST(request: NextRequest) {
     console.log('✅ Schema cache refreshed');
     
     const body = await request.json();
-    const { repairId, status } = body;
-    console.log(`📝 Processing approval: repairId=${repairId}, status=${status}`);
+    const { repairId, status, approvedBy } = body;
+    console.log(`📝 Processing approval: repairId=${repairId}, status=${status}, approvedBy=${approvedBy}`);
 
     if (!repairId) {
       return NextResponse.json({ 
@@ -30,6 +30,13 @@ export async function POST(request: NextRequest) {
         message: 'Valid status is required (Approved, Declined, Pending, Not Required)' 
       }, { status: 400 });
     }
+
+    const resolvedApprovedBy: EstimateApprovedBy | null =
+      status === 'Approved' || status === 'Declined'
+        ? approvedBy === 'staff'
+          ? 'staff'
+          : 'patient'
+        : null;
 
     // Use a fresh Supabase client to avoid cache issues
     const freshSupabase = getFreshSupabaseClient();
@@ -66,11 +73,13 @@ export async function POST(request: NextRequest) {
     const updateData: {
       estimate_status: EstimateStatus;
       estimate_approval_date: string;
+      estimate_approved_by: EstimateApprovedBy | null;
       status?: string;
       date_received_from_manufacturer?: string;
     } = {
       estimate_status: status as EstimateStatus,
-      estimate_approval_date: new Date().toISOString()
+      estimate_approval_date: new Date().toISOString(),
+      estimate_approved_by: resolvedApprovedBy,
     };
 
     // If declining the estimate, update the repair status to "Returned from Manufacturer"
@@ -139,8 +148,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ 
       success: true, 
       message: status === 'Approved' 
-        ? 'Estimate approved. Your repair will proceed.' 
-        : 'Estimate declined. Your device will be returned without repair.'
+        ? resolvedApprovedBy === 'staff'
+          ? 'Estimate approved on behalf of patient. Recorded as confirmed by Hearing Hope.'
+          : 'Estimate approved. Your repair will proceed.'
+        : resolvedApprovedBy === 'staff'
+          ? 'Estimate declined on behalf of patient. Recorded as confirmed by Hearing Hope.'
+          : 'Estimate declined. Your device will be returned without repair.'
     });
   } catch (error) {
     console.error('❌ Unexpected error in estimate approval:', error);
