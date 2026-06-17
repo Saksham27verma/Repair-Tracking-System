@@ -26,6 +26,7 @@ import { calculateTaxFromInclusive, formatCurrency, GST_RATE_OPTIONS } from '@/l
 import {
   getCustomerQuoteFromTransition,
   getTransitionFieldsForStatus,
+  isZeroCustomerQuote,
   TransitionFieldValues,
 } from '@/lib/repair-stage-validation';
 
@@ -46,6 +47,12 @@ interface StageTransitionFieldsProps {
   /** Use saved repair quote when transition values have not been reloaded yet */
   customerQuoteOverride?: number | null;
   estimateStatus?: EstimateStatus | null;
+  repairQuoteContext?: {
+    manufacturer_invoice_total?: number | null;
+    estimate_by_us?: number | null;
+    repair_estimate_by_company?: number | null;
+    manufacturer_invoice_is_foc?: boolean;
+  };
 }
 
 function FinancialSummary({
@@ -107,8 +114,17 @@ export default function StageTransitionFields({
   hidePickupCenter = false,
   customerQuoteOverride,
   estimateStatus,
+  repairQuoteContext,
 }: StageTransitionFieldsProps) {
-  const repairContext = { estimate_status: estimateStatus ?? undefined };
+  const quoteContext = {
+    manufacturer_invoice_total:
+      values.manufacturer_invoice_total ?? repairQuoteContext?.manufacturer_invoice_total,
+    estimate_by_us: values.hope_markup ?? repairQuoteContext?.estimate_by_us,
+    repair_estimate_by_company: repairQuoteContext?.repair_estimate_by_company,
+    manufacturer_invoice_is_foc:
+      values.manufacturer_invoice_is_foc ?? repairQuoteContext?.manufacturer_invoice_is_foc,
+  };
+  const repairContext = { estimate_status: estimateStatus ?? undefined, ...quoteContext };
   const fields = getTransitionFieldsForStatus(targetStatus, repairContext);
   const isDeclinedReturn =
     targetStatus === 'Returned from Manufacturer' && isEstimateDeclined(repairContext);
@@ -121,14 +137,23 @@ export default function StageTransitionFields({
     onChange({ ...values, [key]: value });
   };
 
-  const invoiceTotal = Number(values.manufacturer_invoice_total) || 0;
-  const markup = Number(values.hope_markup) || 0;
+  const invoiceTotal =
+    Number(values.manufacturer_invoice_total ?? repairQuoteContext?.manufacturer_invoice_total) ||
+    0;
+  const markup = Number(values.hope_markup ?? repairQuoteContext?.estimate_by_us) || 0;
   const gstRate = Number(values.manufacturer_invoice_gst_rate) || 18;
   const customerQuote = useMemo(() => {
-    const derived = getCustomerQuoteFromTransition(values);
+    const derived = getCustomerQuoteFromTransition({
+      ...values,
+      manufacturer_invoice_total:
+        values.manufacturer_invoice_total ?? repairQuoteContext?.manufacturer_invoice_total,
+      hope_markup: values.hope_markup ?? repairQuoteContext?.estimate_by_us,
+    });
     if (derived > 0) return derived;
+    const savedQuote = Number(repairQuoteContext?.repair_estimate_by_company) || 0;
+    if (savedQuote > 0) return savedQuote;
     return Number(customerQuoteOverride) > 0 ? Number(customerQuoteOverride) : 0;
-  }, [values, customerQuoteOverride]);
+  }, [values, customerQuoteOverride, repairQuoteContext]);
 
   const invoiceTaxBreakdown = useMemo(
     () => calculateTaxFromInclusive(invoiceTotal, gstRate),
@@ -141,7 +166,10 @@ export default function StageTransitionFields({
   );
 
   const showFullFinancialFlow = targetStatus === 'Returned from Manufacturer';
-  const heading = STATUS_HEADINGS[targetStatus];
+  const isFocCompletion =
+    targetStatus === 'Completed' && isZeroCustomerQuote(repairContext);
+  const heading =
+    isFocCompletion ? 'Complete FOC repair' : STATUS_HEADINGS[targetStatus];
 
   return (
     <Box
@@ -458,23 +486,32 @@ export default function StageTransitionFields({
 
         {targetStatus === 'Completed' && (
           <>
-            {customerQuote > 0 && (
+            {(customerQuote > 0 || isFocCompletion) && (
               <Grid item xs={12}>
                 <Stack spacing={1} sx={{ mb: 1 }}>
-                  <Typography variant="subtitle2" fontWeight={700} color="primary.main">
-                    Customer quote for this repair
-                  </Typography>
+                  {customerQuote > 0 && (
+                    <Typography variant="subtitle2" fontWeight={700} color="primary.main">
+                      Customer quote for this repair
+                    </Typography>
+                  )}
+                  {isFocCompletion && (
+                    <Alert severity="info">
+                      FOC (Free of Cost) repair — no payment is required from the customer.
+                    </Alert>
+                  )}
                   <FinancialSummary
                     customerQuote={customerQuote}
                     invoiceTotal={invoiceTotal}
                     markup={markup}
                     customerQuoteTaxBreakdown={customerQuoteTaxBreakdown}
-                    isFoc={Boolean(values.manufacturer_invoice_is_foc)}
+                    isFoc={Boolean(values.manufacturer_invoice_is_foc ?? repairQuoteContext?.manufacturer_invoice_is_foc)}
                   />
                 </Stack>
               </Grid>
             )}
 
+            {customerQuote > 0 && (
+              <>
             <Grid item xs={12}>
               <Divider />
               <Typography variant="subtitle2" fontWeight={700} sx={{ mt: 1 }}>
@@ -525,6 +562,8 @@ export default function StageTransitionFields({
                 <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
               </TextField>
             </Grid>
+              </>
+            )}
           </>
         )}
       </Grid>

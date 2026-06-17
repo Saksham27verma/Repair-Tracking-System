@@ -1,9 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { Button, CircularProgress } from '@mui/material';
 import { PictureAsPdf as PdfIcon } from '@mui/icons-material';
 import toast from 'react-hot-toast';
+
+function receiptAutoDownloadKey(repairId: string) {
+  return `receipt-auto-downloaded:${repairId}`;
+}
 
 interface DownloadReceiptButtonProps {
   repairId: string;
@@ -20,8 +25,19 @@ export default function DownloadReceiptButton({
   size = 'small',
   autoDownload = false,
 }: DownloadReceiptButtonProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [loading, setLoading] = useState(false);
   const hasAutoDownloaded = useRef(false);
+
+  const clearReceiptQueryParam = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('receipt')) return;
+    params.delete('receipt');
+    const nextQuery = params.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [pathname, router]);
 
   const downloadReceipt = useCallback(async () => {
     setLoading(true);
@@ -62,12 +78,25 @@ export default function DownloadReceiptButton({
   }, [repairId, repairTrackingId]);
 
   useEffect(() => {
-    if (autoDownload && !hasAutoDownloaded.current) {
-      hasAutoDownloaded.current = true;
-      toast.success('Repair created. Downloading drop-off receipt…');
-      downloadReceipt();
+    if (!autoDownload) return;
+
+    const storageKey = receiptAutoDownloadKey(repairId);
+    if (typeof window !== 'undefined' && sessionStorage.getItem(storageKey)) {
+      clearReceiptQueryParam();
+      return;
     }
-  }, [autoDownload, downloadReceipt]);
+
+    if (hasAutoDownloaded.current) return;
+    hasAutoDownloaded.current = true;
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(storageKey, '1');
+    }
+
+    clearReceiptQueryParam();
+    toast.success('Repair created. Downloading drop-off receipt…');
+    downloadReceipt();
+  }, [autoDownload, clearReceiptQueryParam, downloadReceipt, repairId]);
 
   return (
     <Button

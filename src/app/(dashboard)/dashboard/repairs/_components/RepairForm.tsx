@@ -807,6 +807,23 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
     [customerQuote, formData.manufacturer_invoice_gst_rate]
   );
 
+  const stageValidationContext = useMemo(
+    () => ({
+      manufacturer_invoice_total: formData.manufacturer_invoice_total,
+      estimate_by_us: formData.hope_markup,
+      repair_estimate_by_company: customerQuote > 0 ? customerQuote : null,
+      manufacturer_invoice_is_foc: formData.manufacturer_invoice_is_foc,
+      estimate_status: formData.estimate_status,
+    }),
+    [
+      formData.manufacturer_invoice_total,
+      formData.hope_markup,
+      formData.manufacturer_invoice_is_foc,
+      formData.estimate_status,
+      customerQuote,
+    ]
+  );
+
   const maxUnlockedSection = useMemo(
     () => getMaxUnlockedSection(formData, isCustomPurpose, customPurpose, sectionCount),
     [formData, isCustomPurpose, customPurpose, sectionCount]
@@ -1007,10 +1024,12 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
     };
 
     if (mode === 'edit') {
-      const hasTransitionFields = getTransitionFieldsForStatus(newStatus).length > 0;
+      const hasTransitionFields =
+        getTransitionFieldsForStatus(newStatus, stageValidationContext).length > 0;
       const validation = hasTransitionFields
         ? validateTransitionFields(newStatus, transitionFieldValues, {
             ...candidateData,
+            ...stageValidationContext,
             receiving_center_id: candidateData.receiving_center_id || undefined,
           })
         : validateRepairForStatus(newStatus, {
@@ -1576,7 +1595,11 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   received_at:
                     movement.received_at ||
                     (movement.movement_type !== 'sent_to_manufacturer' ? now : undefined),
-                  repair_updates: buildRepairUpdatesFromTransition(transitionPayload),
+                  repair_updates: buildRepairUpdatesFromTransition(
+                    transitionPayload,
+                    formData.status,
+                    stageValidationContext
+                  ),
                 }),
               });
 
@@ -1874,13 +1897,15 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                 </Stack>
               )}
 
-              {getTransitionFieldsForStatus(formData.status).length > 0 && (
+              {getTransitionFieldsForStatus(formData.status, stageValidationContext).length > 0 && (
                 <Box sx={{ mt: 2 }}>
                   <StageTransitionFields
                     targetStatus={formData.status}
                     values={transitionFieldValues}
                     onChange={applyTransitionFieldValues}
                     errors={fieldErrors}
+                    repairQuoteContext={stageValidationContext}
+                    estimateStatus={formData.estimate_status}
                   />
                 </Box>
               )}
@@ -1923,13 +1948,16 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
               )}
 
               {nextStatusStep &&
-                getTransitionFieldsForStatus(nextStatusStep.status).length > 0 && (
+                getTransitionFieldsForStatus(nextStatusStep.status, stageValidationContext).length >
+                  0 && (
                   <Box sx={{ mt: 1.5 }}>
                     <StageTransitionFields
                       targetStatus={nextStatusStep.status}
                       values={transitionFieldValues}
                       onChange={applyTransitionFieldValues}
                       errors={fieldErrors}
+                      repairQuoteContext={stageValidationContext}
+                      estimateStatus={formData.estimate_status}
                     />
                   </Box>
                 )}
@@ -2665,6 +2693,8 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                 </Box>
               </Grid>
 
+              {customerQuote > 0 ? (
+                <>
               <Grid item xs={12}>
                 <Divider sx={{ my: 1 }} />
                 <Stack direction="row" alignItems="center" spacing={1}>
@@ -2712,6 +2742,17 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
                 </TextField>
               </Grid>
+                </>
+              ) : (
+                formData.manufacturer_invoice_is_foc &&
+                isExplicitZeroInvoiceTotal(formData.manufacturer_invoice_total) && (
+                  <Grid item xs={12}>
+                    <Alert severity="info">
+                      FOC (Free of Cost) repair — no payment is required from the customer.
+                    </Alert>
+                  </Grid>
+                )
+              )}
               {customerQuote > 0 && (
                 <Grid item xs={12} sm={4}>
                   <Box

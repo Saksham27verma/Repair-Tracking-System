@@ -29,6 +29,7 @@ type StageValidationInput = Partial<RepairRecord> & {
   receiving_center_id?: string;
   payment_mode?: PaymentMode | null;
   manufacturer_invoice_is_foc?: boolean;
+  hope_markup?: number | null;
 };
 
 type RequirementFn = (repair: StageValidationInput) => boolean;
@@ -90,10 +91,11 @@ const REQUIREMENT_CHECKS: Record<StageValidationField, RequirementFn> = {
     !repair.current_center_id?.trim() &&
     !repair.receiving_center_id?.trim(),
   customer_paid: (repair) => {
+    if (isZeroCustomerQuote(repair)) return false;
     const amount = Number(repair.customer_paid);
     return !Number.isFinite(amount) || amount <= 0;
   },
-  payment_mode: (repair) => !repair.payment_mode,
+  payment_mode: (repair) => !isZeroCustomerQuote(repair) && !repair.payment_mode,
   date_out_to_customer: (repair) => !repair.date_out_to_customer,
   estimate_approval: (repair) =>
     requiresPatientEstimate(repair) && !isEstimateResolved(repair),
@@ -249,7 +251,11 @@ export function getTransitionFieldsForStatus(
   if (status === 'Returned from Manufacturer' && isEstimateDeclined(repair ?? {})) {
     return [];
   }
-  return TRANSITION_INPUT_FIELDS[status] || [];
+  return excludeCompletedPaymentFieldsWhenFoc(
+    TRANSITION_INPUT_FIELDS[status] || [],
+    status,
+    repair
+  );
 }
 
 export function getTransitionFieldsForMovement(
@@ -267,9 +273,34 @@ export function getCustomerQuoteFromTransition(values: TransitionFieldValues): n
   return Math.round((invoiceTotal + markup) * 100) / 100;
 }
 
+export function getCustomerQuoteFromRepair(repair: StageValidationInput): number {
+  const quote = Number(repair.repair_estimate_by_company) || 0;
+  if (quote > 0) return Math.round(quote * 100) / 100;
+  const invoiceTotal = Number(repair.manufacturer_invoice_total) || 0;
+  const markup = Number(repair.estimate_by_us ?? repair.hope_markup) || 0;
+  if (invoiceTotal <= 0 && markup <= 0) return 0;
+  return Math.round((invoiceTotal + markup) * 100) / 100;
+}
+
+export function isZeroCustomerQuote(repair: StageValidationInput): boolean {
+  return getCustomerQuoteFromRepair(repair) <= 0;
+}
+
+const COMPLETED_PAYMENT_FIELDS: StageValidationField[] = ['customer_paid', 'payment_mode'];
+
+function excludeCompletedPaymentFieldsWhenFoc(
+  fields: StageValidationField[],
+  status: RepairStatus,
+  repair?: StageValidationInput
+): StageValidationField[] {
+  if (status !== 'Completed' || !isZeroCustomerQuote(repair ?? {})) return fields;
+  return fields.filter((field) => !COMPLETED_PAYMENT_FIELDS.includes(field));
+}
+
 export function buildRepairUpdatesFromTransition(
   values: TransitionFieldValues,
-  targetStatus?: RepairStatus
+  targetStatus?: RepairStatus,
+  baseRepair: StageValidationInput = {}
 ): Record<string, unknown> {
   const updates: Record<string, unknown> = {};
 
@@ -369,6 +400,18 @@ export function buildRepairUpdatesFromTransition(
     updates.pickup_center_id = values.pickup_center_id || null;
   }
 
+  if (targetStatus === 'Completed') {
+    const mergedForQuote: StageValidationInput = { ...baseRepair, ...updates };
+    if (isZeroCustomerQuote(mergedForQuote)) {
+      if (values.customer_paid === undefined) {
+        updates.customer_paid = 0;
+      }
+      if (values.payment_mode === undefined) {
+        updates.payment_mode = null;
+      }
+    }
+  }
+
   return updates;
 }
 
@@ -403,7 +446,7 @@ export function validateTransitionFields(
     ...getTransitionFieldsForStatus(targetStatus, baseRepair),
     ...(TRANSITION_BLOCKING_FIELDS[targetStatus] || []),
   ];
-  const updates = buildRepairUpdatesFromTransition(values, targetStatus);
+  const updates = buildRepairUpdatesFromTransition(values, targetStatus, baseRepair);
   const mergedRepair: StageValidationInput = {
     ...baseRepair,
     ...updates,
@@ -431,6 +474,11 @@ export function validateRepairForStatus(
   if (targetStatus === 'Returned from Manufacturer' && isEstimateDeclined(repair)) {
     requiredFields = requiredFields.filter(
       (field) => !DECLINED_RETURN_EXCLUDED_FIELDS.includes(field)
+    );
+  }
+  if (targetStatus === 'Completed' && isZeroCustomerQuote(repair)) {
+    requiredFields = requiredFields.filter(
+      (field) => !COMPLETED_PAYMENT_FIELDS.includes(field)
     );
   }
   const missingFields = requiredFields.filter((field) => REQUIREMENT_CHECKS[field](repair));

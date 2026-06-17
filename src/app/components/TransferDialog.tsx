@@ -287,7 +287,7 @@ export default function TransferDialog({
             : movementType === 'center_transfer' && !carrier && !trackingNumber
               ? now
               : undefined,
-        repair_updates: buildRepairUpdatesFromTransition(transitionPayload, targetStatus),
+        repair_updates: buildRepairUpdatesFromTransition(transitionPayload, targetStatus, repair ?? {}),
       };
 
       const res = await fetch(`/api/repairs/${repairId}/movements`, {
@@ -424,6 +424,12 @@ export default function TransferDialog({
                   hidePickupCenter={movementType === 'ready_for_pickup'}
                   customerQuoteOverride={repair?.repair_estimate_by_company}
                   estimateStatus={repair?.estimate_status}
+                  repairQuoteContext={{
+                    manufacturer_invoice_total: repair?.manufacturer_invoice_total,
+                    estimate_by_us: repair?.estimate_by_us,
+                    repair_estimate_by_company: repair?.repair_estimate_by_company,
+                    manufacturer_invoice_is_foc: repair?.manufacturer_invoice_is_foc,
+                  }}
                 />
               </Grid>
             )}

@@ -169,6 +169,35 @@ describe('validateRepairForStatus', () => {
       expect.arrayContaining(['customer_paid', 'payment_mode', 'date_out_to_customer'])
     );
   });
+
+  it('allows completed status for FOC repairs without payment details', () => {
+    const result = validateRepairForStatus('Completed', {
+      status: 'Completed',
+      patient_name: 'John Doe',
+      phone: '9999999999',
+      model_item_name: 'Model X',
+      serial_no: 'SN-1',
+      warranty: 'Out of warranty',
+      purpose: 'Service',
+      current_center_id: 'center-1',
+      pickup_center_id: 'center-1',
+      date_out_to_manufacturer: '2026-06-10T10:00:00.000Z',
+      date_out_to_customer: '2026-06-17T10:00:00.000Z',
+      manufacturer_invoice_number: 'FOC',
+      manufacturer_invoice_date: '2026-06-11',
+      manufacturer_invoice_total: 0,
+      manufacturer_invoice_is_foc: true,
+      warranty_after_repair: '6 months',
+      estimate_by_us: 0,
+      repair_estimate_by_company: null,
+      customer_paid: null,
+      payment_mode: null,
+    });
+
+    expect(result.isValid).toBe(true);
+    expect(result.missingFields).not.toContain('customer_paid');
+    expect(result.missingFields).not.toContain('payment_mode');
+  });
 });
 
 describe('validateTransitionFields', () => {
@@ -305,5 +334,50 @@ describe('validateTransitionFields', () => {
     );
 
     expect(result.isValid).toBe(true);
+  });
+
+  it('allows completing FOC repair with only completion date', () => {
+    const result = validateTransitionFields(
+      'Completed',
+      { date_out_to_customer: '2026-06-17T10:00:00.000Z' },
+      {
+        patient_name: 'John Doe',
+        phone: '9999999999',
+        model_item_name: 'Model X',
+        serial_no: 'SN-1',
+        warranty: 'Out of warranty',
+        purpose: 'Service',
+        current_center_id: 'center-1',
+        pickup_center_id: 'center-1',
+        date_out_to_manufacturer: '2026-06-10T10:00:00.000Z',
+        manufacturer_invoice_number: 'FOC',
+        manufacturer_invoice_date: '2026-06-11',
+        manufacturer_invoice_total: 0,
+        manufacturer_invoice_is_foc: true,
+        warranty_after_repair: '6 months',
+        estimate_by_us: 0,
+        repair_estimate_by_company: null,
+      }
+    );
+
+    expect(result.isValid).toBe(true);
+    expect(result.missingFields).not.toContain('customer_paid');
+    expect(result.missingFields).not.toContain('payment_mode');
+  });
+
+  it('auto-sets zero customer payment when completing FOC repair', () => {
+    const updates = buildRepairUpdatesFromTransition(
+      { date_out_to_customer: '2026-06-17T10:00:00.000Z' },
+      'Completed',
+      {
+        manufacturer_invoice_total: 0,
+        estimate_by_us: 0,
+        repair_estimate_by_company: null,
+        manufacturer_invoice_is_foc: true,
+      }
+    );
+
+    expect(updates.customer_paid).toBe(0);
+    expect(updates.payment_mode).toBeNull();
   });
 });
