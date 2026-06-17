@@ -22,6 +22,8 @@ import {
   getEffectiveTrackingState,
   type EffectiveTrackingState,
 } from '@/lib/tracking';
+import { computeRepairTiming } from '@/lib/repair-timing';
+import RepairTimingReport from '@/app/components/RepairTimingReport';
 import type { CustomerVisitStats } from '@/lib/customer-visits';
 
 interface RepairDetailViewProps {
@@ -122,6 +124,11 @@ export default function RepairDetailView({
   const showEstimateWorkflow =
     beforeManufacturerReturn && (needsQuoteSetup || hasCustomerQuote);
 
+  const repairTiming = computeRepairTiming(
+    repair,
+    trackingState.hasRecordedMovements ? movements : []
+  );
+
   return (
     <Box>
       <RepairDetailSummary
@@ -152,6 +159,8 @@ export default function RepairDetailView({
           estimateStatus={estimateStatus}
         />
       </ContentCard>
+
+      <RepairTimingReport timing={repairTiming} />
 
       {showEstimateWorkflow && needsQuoteSetup && (
         <RepairEstimateSetup

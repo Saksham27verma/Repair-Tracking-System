@@ -36,7 +36,7 @@ function NewRepairContent() {
       subtitle={
         prefillCustomer
           ? `Register a new repair for ${prefillCustomer.name}`
-          : 'Register a new device for repair'
+          : 'Enter customer, device, and receiving center details to log a new repair'
       }
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },

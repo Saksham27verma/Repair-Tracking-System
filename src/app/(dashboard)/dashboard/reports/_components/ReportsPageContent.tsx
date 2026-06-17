@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Database } from '@/app/types/supabase';
 import { Box, CircularProgress } from '@mui/material';
 import ReportsCharts from './ReportsCharts';
+import RepairTimingAnalytics from './RepairTimingAnalytics';
 import PageShell from '@/app/components/ui/PageShell';
+import { computeRepairTiming, RepairTimingRow } from '@/lib/repair-timing';
+import { RepairStatus } from '@/app/types/database';
 
 type RepairsByStatus = {
   name: string;
@@ -24,6 +26,8 @@ export default function ReportsPageContent() {
   const [repairsByWarranty, setRepairsByWarranty] = useState<RepairsByWarranty[]>([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [totalProfit, setTotalProfit] = useState(0);
+  const [timingRows, setTimingRows] = useState<RepairTimingRow[]>([]);
+  const [timingStatusFilter, setTimingStatusFilter] = useState('all');
 
   useEffect(() => {
     async function fetchReportsData() {
@@ -34,7 +38,9 @@ export default function ReportsPageContent() {
         // Fetch repairs data
         const { data: repairs, error } = await supabase
           .from('repairs')
-          .select('status, created_at, customer_paid, warranty, company_billing_to_hope, courier_expenses');
+          .select(
+            'id, repair_id, patient_name, status, created_at, customer_paid, warranty, company_billing_to_hope, courier_expenses, date_of_receipt, date_out_to_manufacturer, date_received_from_manufacturer, date_out_to_customer, receiving_center'
+          );
 
         if (error) throw error;
 
@@ -84,6 +90,17 @@ export default function ReportsPageContent() {
         setRepairsByWarranty(warrantyData);
         setTotalRevenue(revenue);
         setTotalProfit(profit);
+
+        setTimingRows(
+          repairs.map((repair) => ({
+            id: repair.id,
+            repairId: repair.repair_id,
+            patientName: repair.patient_name,
+            receivingCenter: repair.receiving_center || '—',
+            status: repair.status as RepairStatus,
+            timing: computeRepairTiming(repair),
+          }))
+        );
       } catch (err) {
         console.error('Error fetching reports data:', err);
         setError(err instanceof Error ? err.message : 'An error occurred while loading reports');
@@ -94,6 +111,17 @@ export default function ReportsPageContent() {
 
     fetchReportsData();
   }, []);
+
+  const filteredTimingRows = useMemo(() => {
+    if (timingStatusFilter === 'all') return timingRows;
+    if (timingStatusFilter === 'completed') {
+      return timingRows.filter((row) => row.timing.isComplete);
+    }
+    if (timingStatusFilter === 'in_progress') {
+      return timingRows.filter((row) => !row.timing.isComplete);
+    }
+    return timingRows.filter((row) => row.status === timingStatusFilter);
+  }, [timingRows, timingStatusFilter]);
 
   if (loading) {
     return (
@@ -125,6 +153,11 @@ export default function ReportsPageContent() {
         repairsByWarranty={repairsByWarranty}
         totalRevenue={totalRevenue}
         totalProfit={totalProfit}
+      />
+      <RepairTimingAnalytics
+        rows={filteredTimingRows}
+        statusFilter={timingStatusFilter}
+        onStatusFilterChange={setTimingStatusFilter}
       />
     </PageShell>
   );

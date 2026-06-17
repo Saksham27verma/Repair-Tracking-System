@@ -224,6 +224,16 @@ const FORM_SECTIONS = [
   { title: 'Notes', subtitle: 'Programming status and remarks' },
 ] as const;
 
+const CREATE_FORM_SECTIONS = FORM_SECTIONS.slice(0, 3);
+
+function getFormSections(mode: 'create' | 'edit') {
+  return mode === 'create' ? CREATE_FORM_SECTIONS : FORM_SECTIONS;
+}
+
+function getSectionCount(mode: 'create' | 'edit') {
+  return getFormSections(mode).length;
+}
+
 const STATUS_STEPS: {
   status: RepairStatus;
   label: string;
@@ -326,12 +336,13 @@ function isTrackingSectionValid(formData: FormState): boolean {
 function getMaxUnlockedSection(
   formData: FormState,
   isCustomPurpose: boolean,
-  customPurpose: string
+  customPurpose: string,
+  sectionCount: number
 ): number {
   if (!isCustomerSectionValid(formData)) return 0;
   if (!isDeviceSectionValid(formData, isCustomPurpose, customPurpose)) return 1;
   if (!isTrackingSectionValid(formData)) return 2;
-  return FORM_SECTIONS.length - 1;
+  return sectionCount - 1;
 }
 
 interface RepairVisitTab {
@@ -361,16 +372,17 @@ function createNewVisitTab(
     },
     customPurpose: '',
     isCustomPurpose: false,
-    seenSections: [true, false, false, false, false],
+    seenSections: [true, false, false],
   };
 }
 
-function isVisitTabComplete(tab: RepairVisitTab): boolean {
+function isVisitTabComplete(tab: RepairVisitTab, formMode: 'create' | 'edit' = 'create'): boolean {
+  const sectionCount = getSectionCount(formMode);
   return (
     isCustomerSectionValid(tab.formData) &&
     isDeviceSectionValid(tab.formData, tab.isCustomPurpose, tab.customPurpose) &&
     isTrackingSectionValid(tab.formData) &&
-    tab.seenSections.every(Boolean)
+    tab.seenSections.slice(0, sectionCount).every(Boolean)
   );
 }
 
@@ -487,8 +499,10 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
   const [seenSections, setSeenSections] = useState<boolean[]>(() =>
     mode === 'edit'
       ? FORM_SECTIONS.map(() => true)
-      : [true, false, false, false, false]
+      : [true, false, false]
   );
+  const formSections = useMemo(() => getFormSections(mode), [mode]);
+  const sectionCount = formSections.length;
   const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [centers, setCenters] = useState<{ id: string; name: string }[]>([]);
 
@@ -794,8 +808,8 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
   );
 
   const maxUnlockedSection = useMemo(
-    () => getMaxUnlockedSection(formData, isCustomPurpose, customPurpose),
-    [formData, isCustomPurpose, customPurpose]
+    () => getMaxUnlockedSection(formData, isCustomPurpose, customPurpose, sectionCount),
+    [formData, isCustomPurpose, customPurpose, sectionCount]
   );
 
   const allMandatoryValid = useMemo(
@@ -806,11 +820,11 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
     [formData, isCustomPurpose, customPurpose]
   );
 
-  const allSectionsSeen = seenSections.every(Boolean);
+  const allSectionsSeen = seenSections.slice(0, sectionCount).every(Boolean);
   const allVisitTabsReady = useMemo(() => {
     if (mode !== 'create' || visitTabs.length === 0) return false;
     const tabsWithActive = persistActiveVisitTab(visitTabs);
-    return tabsWithActive.every(isVisitTabComplete);
+    return tabsWithActive.every((tab) => isVisitTabComplete(tab, mode));
   }, [mode, visitTabs, persistActiveVisitTab, formData, customPurpose, isCustomPurpose, seenSections]);
 
   const canSubmit =
@@ -819,7 +833,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
       : visitTabs.length > 1
         ? allVisitTabsReady
         : allMandatoryValid && allSectionsSeen;
-  const sectionsSeenCount = seenSections.filter(Boolean).length;
+  const sectionsSeenCount = seenSections.slice(0, sectionCount).filter(Boolean).length;
 
   const currentStatusIndex = getStatusIndex(formData.status);
   const currentStatusStep = STATUS_STEPS[currentStatusIndex] ?? STATUS_STEPS[0];
@@ -1077,7 +1091,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
     try {
       if (mode === 'create' && visitTabs.length > 1) {
         const allTabs = persistActiveVisitTab(visitTabs);
-        const incompleteTab = allTabs.find((tab) => !isVisitTabComplete(tab));
+        const incompleteTab = allTabs.find((tab) => !isVisitTabComplete(tab, mode));
         if (incompleteTab) {
           throw new Error(
             'Each visit tab must have all required fields filled and all sections reviewed before creating repairs.'
@@ -1729,7 +1743,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
         <Box sx={{ mb: 4 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              {sectionsSeenCount} of {FORM_SECTIONS.length} sections reviewed
+              {sectionsSeenCount} of {sectionCount} sections reviewed
             </Typography>
             <Typography variant="body2" color={allMandatoryValid ? 'success.main' : 'text.secondary'}>
               {allMandatoryValid ? 'All required fields complete' : 'Complete required fields as you go'}
@@ -1737,11 +1751,11 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
           </Stack>
           <LinearProgress
             variant="determinate"
-            value={(sectionsSeenCount / FORM_SECTIONS.length) * 100}
+            value={(sectionsSeenCount / sectionCount) * 100}
             sx={{ height: 8, borderRadius: 4 }}
           />
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
-            {FORM_SECTIONS.map((section, index) => (
+            {formSections.map((section, index) => (
               <Chip
                 key={section.title}
                 size="small"
@@ -2026,6 +2040,20 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   onChange={handleChange}
                 />
               </Grid>
+              {mode === 'create' && (
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Remarks"
+                    name="remarks"
+                    value={formData.remarks || ''}
+                    onChange={handleChange}
+                    multiline
+                    rows={3}
+                    placeholder="Any notes about the customer or intake (optional)"
+                  />
+                </Grid>
+              )}
             </Grid>
           </Box>
 
@@ -2319,7 +2347,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   />
                 </Grid>
               )}
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={mode === 'edit' ? 6 : 12}>
                 <TextField
                   fullWidth
                   select
@@ -2336,6 +2364,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   <MenuItem value="Other">Other</MenuItem>
                 </TextField>
               </Grid>
+              {mode === 'edit' && (
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -2353,6 +2382,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   <MenuItem value="None">None</MenuItem>
                 </TextField>
               </Grid>
+              )}
             </Grid>
           </Box>
 
@@ -2429,7 +2459,8 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
             </Grid>
           </Box>
 
-          {/* Section 4: Financial */}
+          {/* Section 4: Financial (edit mode only — filled at later repair stages) */}
+          {mode === 'edit' && (
           <Box
             ref={setSectionRef(3)}
             sx={{
@@ -2710,8 +2741,10 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
               )}
             </Grid>
           </Box>
+          )}
 
-          {/* Section 5: Notes */}
+          {/* Section 5: Notes (edit mode only) */}
+          {mode === 'edit' && (
           <Box
             ref={setSectionRef(4)}
             sx={{
@@ -2770,6 +2803,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
               </Grid>
             </Grid>
           </Box>
+          )}
 
           {error && (
             <Box>
@@ -2806,7 +2840,7 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   ? 'Complete all required fields and review all sections in every visit tab before creating repairs.'
                   : !allMandatoryValid
                     ? 'Fill in all required fields in each section before creating the repair.'
-                    : 'Scroll through all sections to review the full form before creating the repair.'}
+                    : 'Scroll through all three sections to review the form before creating the repair.'}
               </Alert>
             )}
             <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
