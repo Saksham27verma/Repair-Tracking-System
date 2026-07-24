@@ -313,13 +313,16 @@ function isCustomerSectionValid(formData: FormState): boolean {
 function isDeviceSectionValid(
   formData: FormState,
   isCustomPurpose: boolean,
-  customPurpose: string
+  customPurpose: string,
+  options?: { allowMissingSecondSerial?: boolean }
 ): boolean {
   const hasPurpose = isCustomPurpose
     ? Boolean(customPurpose?.trim())
     : Boolean(formData.purpose?.trim());
-  const hasSerial = hasDualSerialIntake(formData.device_format, formData.ear)
-    ? Boolean(formData.serial_no?.trim()) && Boolean(formData.serial_no_2?.trim())
+  const needsDual = hasDualSerialIntake(formData.device_format, formData.ear);
+  const hasSerial = needsDual
+    ? Boolean(formData.serial_no?.trim()) &&
+      (Boolean(formData.serial_no_2?.trim()) || Boolean(options?.allowMissingSecondSerial))
     : Boolean(formData.serial_no?.trim());
   return (
     Boolean(formData.model_item_name?.trim()) &&
@@ -330,7 +333,20 @@ function isDeviceSectionValid(
 }
 
 function isTrackingSectionValid(formData: FormState): boolean {
-  return Boolean(formData.receiving_center_id?.trim());
+  // Prefer center ID; fall back to legacy receiving_center name for older repairs
+  // and for edits where current_center_id was cleared (e.g. device at manufacturer).
+  return Boolean(formData.receiving_center_id?.trim() || formData.receiving_center?.trim());
+}
+
+function resolveReceivingCenterId(
+  centers: { id: string; name: string }[],
+  repair: Pick<RepairRecord, 'receiving_center' | 'current_center_id'>
+): string {
+  if (repair.receiving_center) {
+    const byName = centers.find((c) => c.name === repair.receiving_center);
+    if (byName) return byName.id;
+  }
+  return repair.current_center_id || '';
 }
 
 function getMaxUnlockedSection(
@@ -493,9 +509,16 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
     }
   }, [mode]);
 
-  // State for custom purpose
-  const [customPurpose, setCustomPurpose] = useState<string>('');
-  const [isCustomPurpose, setIsCustomPurpose] = useState<boolean>(false);
+  // State for custom purpose — initialize from repair so edit validation stays valid
+  const [customPurpose, setCustomPurpose] = useState<string>(() => {
+    if (repair?.purpose && !repairPurposeOptions.includes(repair.purpose)) {
+      return repair.purpose;
+    }
+    return '';
+  });
+  const [isCustomPurpose, setIsCustomPurpose] = useState<boolean>(() =>
+    Boolean(repair?.purpose && !repairPurposeOptions.includes(repair.purpose))
+  );
   const [seenSections, setSeenSections] = useState<boolean[]>(() =>
     mode === 'edit'
       ? FORM_SECTIONS.map(() => true)
@@ -518,13 +541,6 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
   // Initialize form state with proper types
   const [formData, setFormData] = useState<FormState>(() => {
     if (repair) {
-      // Check if the repair purpose is in our predefined options
-      const isPredefinedPurpose = repairPurposeOptions.includes(repair.purpose);
-      if (!isPredefinedPurpose && repair.purpose) {
-        setCustomPurpose(repair.purpose);
-        setIsCustomPurpose(true);
-      }
-      
       return {
         // Initialize with default values first
         ...initialFormData,
@@ -563,6 +579,8 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
         mould: repair.mould || '',
         warranty_after_repair: repair.warranty_after_repair || '',
         receiving_center: repair.receiving_center || '',
+        // current_center_id is cleared when the device leaves the center (e.g. at manufacturer).
+        // Prefer resolving from receiving_center name once centers load; keep current as interim.
         receiving_center_id: repair.current_center_id || '',
         pickup_center_id: repair.pickup_center_id || '',
         manufacturer_invoice_number: repair.manufacturer_invoice_number || '',
@@ -580,6 +598,33 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
       };
     }
   });
+
+  // Resolve receiving center ID from the stable receiving_center name once centers load.
+  // Do not rely solely on current_center_id — that field is null while at manufacturer/customer.
+  useEffect(() => {
+    if (mode !== 'edit' || !repair || centers.length === 0) return;
+
+    const resolvedId = resolveReceivingCenterId(centers, repair);
+    if (!resolvedId) return;
+
+    setFormData((prev) => {
+      if (prev.receiving_center_id === resolvedId) return prev;
+      // Only auto-fill when empty, or when current value was a stale current_center_id
+      // that doesn't match the original receiving center name.
+      const currentMatchesName =
+        prev.receiving_center &&
+        centers.find((c) => c.id === prev.receiving_center_id)?.name === prev.receiving_center;
+      if (prev.receiving_center_id && currentMatchesName) return prev;
+
+      const centerName =
+        centers.find((c) => c.id === resolvedId)?.name || prev.receiving_center || '';
+      return {
+        ...prev,
+        receiving_center_id: resolvedId,
+        receiving_center: (centerName || prev.receiving_center) as ReceivingCenter | '',
+      };
+    });
+  }, [mode, repair, centers]);
 
   const [visitTabs, setVisitTabs] = useState<RepairVisitTab[]>([]);
   const [activeVisitTabId, setActiveVisitTabId] = useState('');
@@ -832,9 +877,11 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
   const allMandatoryValid = useMemo(
     () =>
       isCustomerSectionValid(formData) &&
-      isDeviceSectionValid(formData, isCustomPurpose, customPurpose) &&
+      isDeviceSectionValid(formData, isCustomPurpose, customPurpose, {
+        allowMissingSecondSerial: mode === 'edit',
+      }) &&
       isTrackingSectionValid(formData),
-    [formData, isCustomPurpose, customPurpose]
+    [formData, isCustomPurpose, customPurpose, mode]
   );
 
   const allSectionsSeen = seenSections.slice(0, sectionCount).every(Boolean);
@@ -1452,9 +1499,22 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
           mould: formData.mould || null,
           warranty_after_repair: formData.warranty_after_repair || null,
           receiving_center: formData.receiving_center || null,
-          current_center_id: formData.receiving_center_id || null,
           pickup_center_id: formData.pickup_center_id || null,
-          current_location_type: 'at_center',
+          // Location fields: only set on create. On edit, movements own current_center_id /
+          // current_location_type — overwriting them would clear location when a device is
+          // at the manufacturer or with the customer (current_center_id is null there).
+          ...(mode === 'create'
+            ? {
+                current_center_id: formData.receiving_center_id || null,
+                current_location_type: 'at_center' as const,
+              }
+            : formData.status === 'Received' &&
+                (!repair?.current_location_type || repair.current_location_type === 'at_center')
+              ? {
+                  // Still at intake: keep current center aligned with receiving center edits
+                  current_center_id: formData.receiving_center_id || null,
+                }
+              : {}),
         };
 
         let createdRepairId: string | null = null;
@@ -2882,6 +2942,17 @@ export default function RepairForm({ repair, mode = 'create', prefillCustomer }:
                   : !allMandatoryValid
                     ? 'Fill in all required fields in each section before creating the repair.'
                     : 'Scroll through all three sections to review the form before creating the repair.'}
+              </Alert>
+            )}
+            {mode === 'edit' && !canSubmit && !loading && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                {!isCustomerSectionValid(formData)
+                  ? 'Enter a patient name and a phone number with at least 10 digits to save.'
+                  : !isDeviceSectionValid(formData, isCustomPurpose, customPurpose, {
+                        allowMissingSecondSerial: true,
+                      })
+                    ? 'Complete device details (model, serial number(s), warranty, and purpose) to save.'
+                    : 'Select a receiving center in Center Tracking to save changes.'}
               </Alert>
             )}
             <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
